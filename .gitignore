@@ -138,3 +138,6 @@ dmypy.json
 
 # Cython debug symbols
 cython_debug/
+
+#dask stuffs
+dask-worker-space/

@@ -49,7 +49,7 @@ def add_metadata_to_df(df, column_dictionary):
     return
 
 
-def dictionary_to_meta_df(meta_df, column_dictionary):
+def dictionary_to_meta_df(column_dictionary):
     new_df = pd.DataFrame.from_dict(column_dictionary)
     if len(new_df) == 0:
         print("nothing to store")
@@ -57,7 +57,6 @@ def dictionary_to_meta_df(meta_df, column_dictionary):
     new_df['metadata_type'] = new_df['metadata_key'].apply(lambda x: x.split(':')[0])
     new_df['metadata_key'] = new_df['metadata_key'].apply(lambda x: x.split(':')[-1])
     new_df['extract_time'] = datetime.datetime.now()
-
     return new_df
 
 
@@ -109,46 +108,6 @@ def update_meta_df(photo_directories, column_dictionary, file_types, meta_df_pat
     meta_df.to_pickle(meta_df_path)
     return
 
-# def update_meta_df_dask_delay(photo_directories, column_dictionary, file_types, meta_df_path, exif_tool_executable=None,
-#                    append=True):
-#     if not append:
-#         meta_df = init_meta_df(column_dictionary)
-#     else:
-#         meta_df = load_meta_df(meta_df_path)
-#
-#     filepaths = get_filepaths(photo_directories, file_types)
-#     filepath_set = set(filepaths)
-#     meta_df_filepath_set = set(meta_df['filepath'])
-#     new_files = filepath_set - meta_df_filepath_set
-#     if new_files:
-#         print(f'getting metadata on {len(new_files)} new files')
-#         ph_exif = exiftool.ExifTool(executable_=exif_tool_executable)
-#         ph_exif.start()
-#     else:
-#         print("no new files")
-#         return
-#
-#
-#     def dask_delayed_exif(column_dictionary):
-#         metadata_dict = ph_exif.get_metadata(filepath)
-#         column_dictionary['metadata_key'].extend([key for key in metadata_dict.keys()])
-#         column_dictionary['metadata_value'].extend([val for val in metadata_dict.values()])
-#         time_id = get_time_id(metadata_dict, dt_keys)
-#         column_dictionary['time_id'].extend([time_id] * len(metadata_dict))
-#         column_dictionary['filepath'].extend([filepath] * len(metadata_dict))
-#         column_dictionary['file_suffix'].extend([filepath.split('.')[-1]] * len(metadata_dict))
-#         return
-#
-#     for filepath in new_files:
-#         dask.delayed(dask_delayed_exif)(filepath)
-#     meta_df = dask.delayed(pd.DataFrame.from_dict)(column_dictionary)
-#     meta_df = meta_df.compute()
-#
-#     #concat_meta_df(meta_df, column_dictionary)
-#     #meta_df = pd.DataFrame.from_dict(column_dictionary)
-#     meta_df.to_pickle(meta_df_path)
-#     return
-
 
 def update_meta_df_dask_futures(photo_directories, column_dictionary, file_types, meta_df_path, exif_tool_executable=None,
                    append=True):
@@ -181,7 +140,7 @@ def update_meta_df_dask_futures(photo_directories, column_dictionary, file_types
             column_dictionary['time_id'].extend([time_id] * len(metadata_dict))
             column_dictionary['filepath'].extend([filepath] * len(metadata_dict))
             column_dictionary['file_suffix'].extend([filepath.split('.')[-1]] * len(metadata_dict))
-        return concat_meta_df(column_dictionary)
+        return dictionary_to_meta_df(column_dictionary)
 
 
     def chunks(l, n):
@@ -189,70 +148,12 @@ def update_meta_df_dask_futures(photo_directories, column_dictionary, file_types
         for i in range(0, n):
             yield l[i::n]
 
-    args = [ (column_dictionary, x) for x in chunks(new_files, 8 )]
+    args = [(column_dictionary, x) for x in chunks(new_files, 8 )]
     futures = client.map(dask_worker_exif, args)
     results = client.gather(futures)
-    # for chunk in new_files_chunks:
-    #     args_tuple = (column_dictionary, chunk)
-    #     client.submit(dask_worker_exif, args_tuple)
-    # results = client.gather()
-
     pd.concat(results).to_pickle(meta_df_path)
     return
 
-#
-# def update_meta_df_mp_pool(photo_directories, column_dictionary, file_types, meta_df_path, exif_tool_executable=None,
-#                    append=True):
-#     if not append:
-#         meta_df = init_meta_df(column_dictionary)
-#     else:
-#         meta_df = load_meta_df(meta_df_path)
-#
-#     filepaths = get_filepaths(photo_directories, file_types)
-#     filepath_set = set(filepaths)
-#     meta_df_filepath_set = set(meta_df['filepath'])
-#     new_files = list(filepath_set - meta_df_filepath_set)
-#     if new_files:
-#         print(f'getting metadata on {len(new_files)} new files')
-#     else:
-#         print("no new files")
-#         return
-#
-#
-#
-#     def dask_worker_exif(args_tuple):
-#         column_dictionary, filepaths = args_tuple
-#         ph_exif = exiftool.ExifTool()
-#         ph_exif.start()
-#         for filepath in filepaths:
-#             metadata_dict = ph_exif.get_metadata(filepath)
-#             column_dictionary['metadata_key'].extend([key for key in metadata_dict.keys()])
-#             column_dictionary['metadata_value'].extend([val for val in metadata_dict.values()])
-#             time_id = get_time_id(metadata_dict, dt_keys)
-#             column_dictionary['time_id'].extend([time_id] * len(metadata_dict))
-#             column_dictionary['filepath'].extend([filepath] * len(metadata_dict))
-#             column_dictionary['file_suffix'].extend([filepath.split('.')[-1]] * len(metadata_dict))
-#         return pd.DataFrame.from_dict(column_dictionary)
-#     def chunks(l, n):
-#         """Yield n number of striped chunks from l."""
-#         for i in range(0, n):
-#             yield l[i::n]
-#
-#     from multiprocessing import Pool
-#     pool = Pool()  # start local workers as processes
-#     args  = [ (column_dictionary, x) for x in chunks(new_files, 8 )]
-#     df_list = pool.map(dask_worker_exif, args)
-#
-#     # for chunk in new_files_chunks:
-#     #     args_tuple = (column_dictionary, chunk)
-#     #     client.submit(dask_worker_exif, args_tuple)
-#     # results = client.gather()
-#
-#
-#
-#     pd.concat(results).to_pickle(meta_df_path)
-#     return
-#
 
 def init_meta_df(column_dictionary):
     df = pd.DataFrame.from_dict(column_dictionary)
@@ -283,14 +184,22 @@ def load_meta_df(meta_df_path):
 #  - keep track of source filetype for each attribute
 #   - make another df for time_id and file path without suffix
 #  - make another df with merged attributes? Classify attributes as single source or shared? What about NEF and XMP but not JPG?
+#       - for now the decision is to do NEF, JPG, and XMP only and then a single value for "multi"
 
 def create_id_df(meta_df):
     id_df = meta_df[['time_id', 'filepath']].copy()
     id_df = id_df.drop_duplicates(subset='time_id')
     id_df['file_prefix'] = id_df['filepath'].apply(lambda x: x.split('.')[0])
     id_df = id_df.drop(columns=['filepath'])
-
     return id_df
+
+def create_merged_meta_df(meta_df):
+    meta_df = pd.read_pickle('meta_df.pkl')
+    meta_df['files_with_key'] = meta_df.groupby(['time_id', 'metadata_key', 'metadata_type'])['filepath'].transform('count')
+    meta_df.loc[meta_df.files_with_key >1, 'source_file_type']  = 'multi'
+    meta_df.loc[meta_df.files_with_key ==1, 'source_file_type' ] = meta_df.loc[meta_df.files_with_key ==1, 'file_suffix']
+    missing_time_id = meta_df[meta_df.key_type.isna()]
+    merged_meta_df = meta_df.dropna(subset=['time_id']).drop_duplicates(subset=['time_id', 'metadata_key', 'metadata_type','source_file_type'])
 
 
 # def make_jpg_meta_df(meta_df, meta_df_path, red_label_only=True):
@@ -319,30 +228,10 @@ if __name__ == '__main__':
     meta_df_path = config['meta_df_path']
     exiftool_executable = config['exiftool_executable']
 
-    # start = datetime.datetime.now()
-    # print(f"starting normal version: {start}")
-    # update_meta_df(original_photo_dirs, column_dictionary, file_types, meta_df_path, append=False)
-    # end = datetime.datetime.now()
-    # print(f"finished normal version: {end}")
-    # print(f"total time normal version: {end-start}")
-
-    # start = datetime.datetime.now()
-    # print(f"starting delay version: {start}")
-    # delay_df= update_meta_df_dask_delay(original_photo_dirs, column_dictionary, file_types, "meta_df_delay.pkl", append=False)
-    # end = datetime.datetime.now()
-    # print(f"finished delay version: {end}")
-    # print(f"total time delay version: {end-start}")
-
     start = datetime.datetime.now()
     print(f"starting future version: {start}")
-    futures_df= update_meta_df_dask_futures(original_photo_dirs, column_dictionary, file_types, 'meta_df_futures.pkl', append=False)
+    futures_df= update_meta_df_dask_futures(original_photo_dirs, column_dictionary, file_types, meta_df_path, append=False)
     end = datetime.datetime.now()
     print(f"finished future version: {end}")
     print(f"total time future version: {end-start}")
 
-    # start = datetime.datetime.now()
-    # print(f"starting future version: {start}")
-    # delay_df= update_meta_df_mp_pool(original_photo_dirs, column_dictionary, file_types, 'meta_df_futures.pkl', append=False)
-    # end = datetime.datetime.now()
-    # print(f"finished future version: {end}")
-    # print(f"total time future version: {end-start}")

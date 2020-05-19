@@ -114,3 +114,20 @@ p.map(runwc, files)
 import pandas as pd
 futures_df = pd.read_pickle('/home/zack/PycharmProjects/photo-tools/meta_df_futures.pkl')
 regular_df = pd.read_pickle('/home/zack/PycharmProjects/photo-tools/meta_df.pkl')
+
+
+meta_df = pd.read_pickle('meta_df.pkl')
+meta_df['files_with_key'] = meta_df.groupby(['time_id', 'metadata_key', 'metadata_type'])['filepath'].transform('count')
+meta_df.loc[meta_df.files_with_key >1, 'source_file_type']  = 'multi'
+meta_df.loc[meta_df.files_with_key ==1, 'source_file_type' ] = meta_df.loc[meta_df.files_with_key ==1, 'file_suffix']
+missing_time_id = meta_df[meta_df.key_type.isna()]
+
+
+multi_id = merged_meta_df.query("filepath >1 ").index
+multi_id = merged_meta_df.query("filepath >1 ").index
+meta_df = meta_df.set_index(['time_id', 'metadata_key', 'metadata_type'])
+meta_df.loc[multi_id]
+
+merged_meta_df = meta_df.dropna(subset=['time_id']).drop_duplicates(subset=['time_id', 'metadata_key', 'metadata_type','source_file_type'])
+    
+merged_meta_df[merged_meta_df.source_file_type.isna()]
