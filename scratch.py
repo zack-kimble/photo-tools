@@ -84,3 +84,33 @@ jpg_keys - raw_keys
 
 
 xmp_files = meta_df[ meta_df.filepath.str[-3:] =='xmp']
+
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+Created on Mon May 18 21:10:34 2020
+
+@author: zack
+"""
+
+data = """meta_df.pkl     ubuntu_config.json  windows_config.json  photo_tools.py  update_metadata.py
+meta_df_delay.pkl   scratch.py      webdav_client.py
+"""
+
+files = data.split()
+
+import subprocess
+
+def runwc(path):
+   rv = subprocess.check_output(['wc', path], universal_newlines=True)
+   lines, words, characters, name = rv.split()
+   return (name, int(lines), int(words), int(characters))
+from multiprocessing import Pool
+
+p = Pool()
+
+p.map(runwc, files)
+
+import pandas as pd
+futures_df = pd.read_pickle('/home/zack/PycharmProjects/photo-tools/meta_df_futures.pkl')
+regular_df = pd.read_pickle('/home/zack/PycharmProjects/photo-tools/meta_df.pkl')
