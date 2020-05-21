@@ -32,7 +32,7 @@ from dask.distributed import Client
 # what to do about jpegs, NEFs and XMP for same pic? - figure out in df after? Could merge based on subsec create date
 
 
-column_dictionary = dict(time_id=[], filepath=[], metadata_key=[], metadata_value=[], file_suffix=[])
+column_dictionary = dict(time_id=[], filepath=[], metadata_key=[], metadata_value=[]) #,file_suffix=[], file_prefix=[])
 
 
 def get_filepaths(directories: list, file_types: list):
@@ -59,7 +59,7 @@ def dictionary_to_meta_df(column_dictionary):
     new_df['extract_time'] = datetime.datetime.now()
     return new_df
 
-
+#TODO: find and fix jpegs that have been directly edited by LR and lost trailing 0 from subsec times (currently 2)
 def get_time_id(metadata_dict, dt_keys):
     for dt_key in dt_keys:
         try:
@@ -108,7 +108,7 @@ def update_meta_df(photo_directories, column_dictionary, file_types, meta_df_pat
     meta_df.to_pickle(meta_df_path)
     return
 
-
+#TODO: Check update time
 def update_meta_df_dask_futures(photo_directories, column_dictionary, file_types, meta_df_path, exif_tool_executable=None,
                    append=True):
     if not append:
@@ -139,7 +139,8 @@ def update_meta_df_dask_futures(photo_directories, column_dictionary, file_types
             time_id = get_time_id(metadata_dict, dt_keys)
             column_dictionary['time_id'].extend([time_id] * len(metadata_dict))
             column_dictionary['filepath'].extend([filepath] * len(metadata_dict))
-            column_dictionary['file_suffix'].extend([filepath.split('.')[-1]] * len(metadata_dict))
+            #column_dictionary['file_suffix'].extend([filepath.split('.')[-1]] * len(metadata_dict))
+            #column_dictionary['file_prefix'].extend([filepath.split('.')[0]] * len(metadata_dict))
         return dictionary_to_meta_df(column_dictionary)
 
 
@@ -151,9 +152,16 @@ def update_meta_df_dask_futures(photo_directories, column_dictionary, file_types
     args = [(column_dictionary, x) for x in chunks(new_files, 8 )]
     futures = client.map(dask_worker_exif, args)
     results = client.gather(futures)
-    pd.concat(results).to_pickle(meta_df_path)
-    return
+    new_df = pd.concat(results)
 
+    meta_df = pd.concat([meta_df, new_df])
+    meta_df.to_pickle(meta_df_path)
+    return meta_df
+
+def split_filepath(meta_df):
+    meta_df['file_suffix'] = meta_df['filepath'].apply(lambda x: x.split('.')[-1])
+    meta_df['file_prefix'] = meta_df['filepath'].apply(lambda x: x.split('.')[0])
+    return meta_df
 
 def init_meta_df(column_dictionary):
     df = pd.DataFrame.from_dict(column_dictionary)
@@ -187,20 +195,53 @@ def load_meta_df(meta_df_path):
 #       - for now the decision is to do NEF, JPG, and XMP only and then a single value for "multi"
 
 def create_id_df(meta_df):
-    id_df = meta_df[['time_id', 'filepath']].copy()
-    id_df = id_df.drop_duplicates(subset='time_id')
-    id_df['file_prefix'] = id_df['filepath'].apply(lambda x: x.split('.')[0])
-    id_df = id_df.drop(columns=['filepath'])
+    id_df = meta_df[['time_id', 'file_prefix']].copy()
+    id_df = id_df.drop_duplicates(subset=['time_id','file_prefix'])
+    #id_df['file_prefix'] = id_df['filepath'].apply(lambda x: x.split('.')[0])
     return id_df
 
 def create_merged_meta_df(meta_df):
-    meta_df = pd.read_pickle('meta_df.pkl')
-    meta_df['files_with_key'] = meta_df.groupby(['time_id', 'metadata_key', 'metadata_type'])['filepath'].transform('count')
-    meta_df.loc[meta_df.files_with_key >1, 'source_file_type']  = 'multi'
-    meta_df.loc[meta_df.files_with_key ==1, 'source_file_type' ] = meta_df.loc[meta_df.files_with_key ==1, 'file_suffix']
-    missing_time_id = meta_df[meta_df.key_type.isna()]
-    merged_meta_df = meta_df.dropna(subset=['time_id']).drop_duplicates(subset=['time_id', 'metadata_key', 'metadata_type','source_file_type'])
+    #meta_df = pd.read_pickle('meta_df.pkl')
+    merged_meta_df = meta_df.copy()
+    merged_meta_df['files_with_key'] = merged_meta_df.groupby(['time_id', 'metadata_key', 'metadata_type'])['filepath'].transform('count')
+    merged_meta_df.loc[merged_meta_df.files_with_key >1, 'source_file_type']  = 'multi'
+    merged_meta_df.loc[merged_meta_df.files_with_key ==1, 'source_file_type' ] = merged_meta_df.loc[merged_meta_df.files_with_key ==1, 'file_suffix']
+    missing_time_id = merged_meta_df[merged_meta_df.source_file_type.isna()]
+    merged_meta_df = (merged_meta_df.dropna(subset=['time_id'])\
+        .drop_duplicates(subset=['time_id', 'metadata_key', 'metadata_type','source_file_type'])
+        .drop(columns=['filepath','file_suffix'])
+        .set_index(['time_id','metadata_type','metadata_key'])
+        )
+    return merged_meta_df
 
+
+def convert_filepath_to_kws(meta_id_df, original_photo_dirs):
+    relevant_path_structure = meta_id_df.set_index('time_id').file_prefix.copy()
+    for directory in original_photo_dirs:
+        relevant_path_structure = relevant_path_structure.str.replace(directory,'')
+    new_kws = relevant_path_structure.apply(lambda x: x.split('.')[:-1])
+    return new_kws
+
+def extend_kws(series):
+    current = series['metadata_value']
+    if type(current) == str:
+        current = [current]
+    new = list(series['new_kws'])
+    current.extend(new)
+    return current
+
+def add_kws_to_df(kws, meta_df):
+    kws = kws.rename('new_kws')
+    kw_metadata = meta_df.query("metadata_key in ['Subject','HierarchicalSubject']").copy()
+    kw_metadata = kw_metadata.reset_index(['metadata_type', 'metadata_key']).join(kws)
+    kw_metadata['metadata_value'] = kw_metadata.apply(extend_kws, axis=1)
+    kw_metadata = kw_metadata.reset_index().set_index(['time_id','metadata_type','metadata_key'])
+    meta_df.update(kw_metadata)
+    return meta_df
+
+
+def filter_by_metadata(filter_dictionary):
+    pass
 
 # def make_jpg_meta_df(meta_df, meta_df_path, red_label_only=True):
 
@@ -228,10 +269,33 @@ if __name__ == '__main__':
     meta_df_path = config['meta_df_path']
     exiftool_executable = config['exiftool_executable']
 
-    start = datetime.datetime.now()
-    print(f"starting future version: {start}")
-    futures_df= update_meta_df_dask_futures(original_photo_dirs, column_dictionary, file_types, meta_df_path, append=False)
-    end = datetime.datetime.now()
-    print(f"finished future version: {end}")
-    print(f"total time future version: {end-start}")
+    # start = datetime.datetime.now()
+    # print(f"starting future version: {start}")
+    # meta_df = update_meta_df_dask_futures(original_photo_dirs, column_dictionary, file_types, meta_df_path, append=False)
+    # end = datetime.datetime.now()
+    # print(f"finished future version: {end}")
+    # print(f"total time future version: {end-start}")
 
+    print(datetime.datetime.now())
+    print("reading")
+    meta_df = pd.read_pickle(meta_df_path)
+    print(datetime.datetime.now())
+
+    #reduce to dir with tags for testing
+    meta_df = meta_df.query("filepath.str.contains('2014-1H')")
+
+    print("splitting")
+    meta_df = split_filepath(meta_df)
+    print(datetime.datetime.now())
+    print("iding")
+    meta_id_df = create_id_df(meta_df)
+    print(datetime.datetime.now())
+    print("merging")
+    merged_meta_df = create_merged_meta_df(meta_df)
+    meta_df = meta_df.set_index('time_id')
+    print(datetime.datetime.now())
+    print("tagging")
+    filepath_tags = convert_filepath_to_kws(meta_id_df, original_photo_dirs)
+    merged_meta_df = add_kws_to_df(filepath_tags, merged_meta_df)
+
+    #print('here')

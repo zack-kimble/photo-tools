@@ -123,6 +123,8 @@ meta_df.loc[meta_df.files_with_key ==1, 'source_file_type' ] = meta_df.loc[meta_
 missing_time_id = meta_df[meta_df.key_type.isna()]
 
 
+x = meta_df.head()
+
 multi_id = merged_meta_df.query("filepath >1 ").index
 multi_id = merged_meta_df.query("filepath >1 ").index
 meta_df = meta_df.set_index(['time_id', 'metadata_key', 'metadata_type'])
@@ -131,3 +133,48 @@ meta_df.loc[multi_id]
 merged_meta_df = meta_df.dropna(subset=['time_id']).drop_duplicates(subset=['time_id', 'metadata_key', 'metadata_type','source_file_type'])
     
 merged_meta_df[merged_meta_df.source_file_type.isna()]
+
+meta_df[meta_df.metadata_key =='Tags']
+
+meta_df.filepath.unique()
+
+original_photo_dirs = ["/media/zack/WD 4TB/My Pictures/D800/", "/media/zack/WD 4TB/My Pictures/D700/Originals", "/media/zack/WD 4TB/My Pictures/Z7/"],
+
+meta_id = create_id_df
+
+def create_id_df(meta_df):
+    id_df = meta_df[['time_id', 'filepath']].copy()
+    id_df = id_df.drop_duplicates(subset='time_id')
+    #id_df['file_prefix'] = id_df['filepath'].apply(lambda x: x.split('.')[0])
+    id_df = id_df.drop(columns=['filepath','file_suffix'])
+    return id_df
+
+
+def convert_filepath_to_tags(meta_df, meta_id_df, original_photo_dirs):
+    relevant_path_structure = meta_df.filepath.copy()
+    for directory in original_photo_dirs:
+        relevant_path_structure.str.replace(directory,'')
+    return relevant_path_structure
+
+
+'/media/zack/WD 4TB/My Pictures/D800/2017-Q1/Norway/_DSC2798.NEF'.split('/')[:-1]
+
+
+def split_filepath(meta_df):
+    meta_df['file_suffix'] = meta_df['filepath'].apply(lambda x: x.split('.')[-1])
+    meta_df['file_prefix'] = meta_df['filepath'].apply(lambda x: x.split('.')[0])
+    return meta_df
+
+meta_df = split_filepath(meta_df)
+x= meta_df[meta_df['file_prefix'] == '/media/zack/WD 4TB/My Pictures/D800/2014-1H/DSC_0233']
+
+meta_df.query("'Modified' in metadata_key ")
+
+x =meta_df.set_index('time_id').query("metadata_key in ['Subject','HierarchicalSubject']")
+
+x = meta_df.query("file_prefix == '/media/zack/WD 4TB/My Pictures/D800/2014-1H/DSC_0233'")
+x = meta_df.query("file_prefix == '/media/zack/WD 4TB/My Pictures/D800/2014-1H/DSC_0232'")
+
+x.query("metadata_key=='SubSecCreateDate'").metadata_value.str.len()
+meta_df.query("metadata_key=='SubSecCreateDate'").metadata_value.str.len().value_counts()
+x  = meta_df.query("metadata_key=='SubSecCreateDate' and metadata_value.str.len()==28")
