@@ -1,0 +1,13 @@
+original_photo_dirs : ["/media/zack/WD 4TB/My Pictures/D800/", "/media/zack/WD 4TB/My Pictures/D700/Originals/", "/media/zack/WD 4TB/My Pictures/Z7/"]
+file_types : ["jpg", "nef", "tiff", "xmp", "jpeg"]
+possible_metadata_keys:
+  timestamp : ["Composite:SubSecCreateDate", "Composite:CreateDate", "XMP:DateTimeOriginal"]
+  label_color: ["Label"]
+  rating: ["Rating"]
+source_file_preference:
+  - lr_edited_jpgs
+  - /media/zack/WD 4TB/My Pictures/Z7/
+  - lr_jpgs/My Pictures/D800
+  - /media/zack/WD 4TB/My Pictures/D700/picasa
+  - /media/zack/WD 4TB/My Pictures/D700
+  - lr_jpgs

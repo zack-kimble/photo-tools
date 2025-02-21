@@ -1,0 +1,23 @@
+
+      graph {
+         graph [rankdir=LR];
+         node [label="\N",
+             shape=plaintext
+         ];
+         edge [color=gray50,
+             minlen=2,
+             style=dashed
+         ];
+      
+"photo" [label=<<FONT FACE="Helvetica"><TABLE BORDER="0" CELLBORDER="1" CELLPADDING="4" CELLSPACING="0"><TR><TD><B><FONT POINT-SIZE="16">photo</FONT></B></TD></TR><TR><TD ALIGN="LEFT" PORT="id"><u><FONT>id</FONT></u> <FONT> [INTEGER]</FONT> NOT NULL</TD></TR><TR><TD ALIGN="LEFT" PORT="face_detection_run"><FONT>face_detection_run</FONT> <FONT> [BOOLEAN]</FONT> NOT NULL</TD></TR><TR><TD ALIGN="LEFT" PORT="location"><FONT>location</FONT> <FONT> [VARCHAR]</FONT></TD></TR></TABLE></FONT>>];
+"photo_metadata" [label=<<FONT FACE="Helvetica"><TABLE BORDER="0" CELLBORDER="1" CELLPADDING="4" CELLSPACING="0"><TR><TD><B><FONT POINT-SIZE="16">photo_metadata</FONT></B></TD></TR><TR><TD ALIGN="LEFT" PORT="id"><u><FONT>id</FONT></u> <FONT> [INTEGER]</FONT> NOT NULL</TD></TR><TR><TD ALIGN="LEFT" PORT="key"><FONT>key</FONT> <FONT> [VARCHAR]</FONT></TD></TR><TR><TD ALIGN="LEFT" PORT="photo_id"><FONT>photo_id</FONT> <FONT> [INTEGER]</FONT></TD></TR><TR><TD ALIGN="LEFT" PORT="value"><FONT>value</FONT> <FONT> [VARCHAR]</FONT></TD></TR></TABLE></FONT>>];
+"photo_face" [label=<<FONT FACE="Helvetica"><TABLE BORDER="0" CELLBORDER="1" CELLPADDING="4" CELLSPACING="0"><TR><TD><B><FONT POINT-SIZE="16">photo_face</FONT></B></TD></TR><TR><TD ALIGN="LEFT" PORT="id"><u><FONT>id</FONT></u> <FONT> [INTEGER]</FONT> NOT NULL</TD></TR><TR><TD ALIGN="LEFT" PORT="bb_auto"><FONT>bb_auto</FONT> <FONT> [BOOLEAN]</FONT></TD></TR><TR><TD ALIGN="LEFT" PORT="bb_prob"><FONT>bb_prob</FONT> <FONT> [NUMERIC]</FONT> NOT NULL</TD></TR><TR><TD ALIGN="LEFT" PORT="bb_x1"><FONT>bb_x1</FONT> <FONT> [NUMERIC]</FONT> NOT NULL</TD></TR><TR><TD ALIGN="LEFT" PORT="bb_x2"><FONT>bb_x2</FONT> <FONT> [NUMERIC]</FONT> NOT NULL</TD></TR><TR><TD ALIGN="LEFT" PORT="bb_y1"><FONT>bb_y1</FONT> <FONT> [NUMERIC]</FONT> NOT NULL</TD></TR><TR><TD ALIGN="LEFT" PORT="bb_y2"><FONT>bb_y2</FONT> <FONT> [NUMERIC]</FONT> NOT NULL</TD></TR><TR><TD ALIGN="LEFT" PORT="location"><FONT>location</FONT> <FONT> [INTEGER]</FONT> NOT NULL</TD></TR><TR><TD ALIGN="LEFT" PORT="name"><FONT>name</FONT> <FONT> [VARCHAR]</FONT></TD></TR><TR><TD ALIGN="LEFT" PORT="name_auto"><FONT>name_auto</FONT> <FONT> [BOOLEAN]</FONT></TD></TR><TR><TD ALIGN="LEFT" PORT="photo_id"><FONT>photo_id</FONT> <FONT> [INTEGER]</FONT></TD></TR><TR><TD ALIGN="LEFT" PORT="sequence"><FONT>sequence</FONT> <FONT> [INTEGER]</FONT> NOT NULL</TD></TR></TABLE></FONT>>];
+"face_embedding" [label=<<FONT FACE="Helvetica"><TABLE BORDER="0" CELLBORDER="1" CELLPADDING="4" CELLSPACING="0"><TR><TD><B><FONT POINT-SIZE="16">face_embedding</FONT></B></TD></TR><TR><TD ALIGN="LEFT" PORT="id"><u><FONT>id</FONT></u> <FONT> [INTEGER]</FONT> NOT NULL</TD></TR><TR><TD ALIGN="LEFT" PORT="embedding"><FONT>embedding</FONT> <FONT> [BLOB]</FONT></TD></TR><TR><TD ALIGN="LEFT" PORT="photo_face_id"><FONT>photo_face_id</FONT> <FONT> [INTEGER]</FONT></TD></TR></TABLE></FONT>>];
+"saved_search" [label=<<FONT FACE="Helvetica"><TABLE BORDER="0" CELLBORDER="1" CELLPADDING="4" CELLSPACING="0"><TR><TD><B><FONT POINT-SIZE="16">saved_search</FONT></B></TD></TR><TR><TD ALIGN="LEFT" PORT="id"><u><FONT>id</FONT></u> <FONT> [INTEGER]</FONT> NOT NULL</TD></TR><TR><TD ALIGN="LEFT" PORT="keywords"><FONT>keywords</FONT> <FONT> [VARCHAR]</FONT></TD></TR><TR><TD ALIGN="LEFT" PORT="name"><FONT>name</FONT> <FONT> [VARCHAR]</FONT></TD></TR><TR><TD ALIGN="LEFT" PORT="people"><FONT>people</FONT> <FONT> [VARCHAR]</FONT></TD></TR></TABLE></FONT>>];
+"search_results" [label=<<FONT FACE="Helvetica"><TABLE BORDER="0" CELLBORDER="1" CELLPADDING="4" CELLSPACING="0"><TR><TD><B><FONT POINT-SIZE="16">search_results</FONT></B></TD></TR><TR><TD ALIGN="LEFT" PORT="id"><u><FONT>id</FONT></u> <FONT> [INTEGER]</FONT> NOT NULL</TD></TR><TR><TD ALIGN="LEFT" PORT="order_by"><FONT>order_by</FONT> <FONT> [INTEGER]</FONT></TD></TR><TR><TD ALIGN="LEFT" PORT="photo_id"><FONT>photo_id</FONT> <FONT> [INTEGER]</FONT></TD></TR><TR><TD ALIGN="LEFT" PORT="search_id"><FONT>search_id</FONT> <FONT> [INTEGER]</FONT></TD></TR></TABLE></FONT>>];
+"photo":"id" -- "photo_metadata":"photo_id" [taillabel=<<FONT>{0,1}</FONT>>,headlabel=<<FONT>0..N</FONT>>];
+"photo":"id" -- "photo_face":"photo_id" [taillabel=<<FONT>{0,1}</FONT>>,headlabel=<<FONT>0..N</FONT>>];
+"photo_face":"id" -- "face_embedding":"photo_face_id" [taillabel=<<FONT>{0,1}</FONT>>,headlabel=<<FONT>1</FONT>>];
+"saved_search":"id" -- "search_results":"search_id" [taillabel=<<FONT>{0,1}</FONT>>,headlabel=<<FONT>0..N</FONT>>];
+"photo":"id" -- "search_results":"photo_id" [taillabel=<<FONT>{0,1}</FONT>>,headlabel=<<FONT>0..N</FONT>>];
+}

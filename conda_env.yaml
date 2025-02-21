@@ -1,0 +1,12 @@
+name: photo_tools
+channels:
+  - defaults
+dependencies:
+  - pandas
+  - dask
+  - numpy
+  - pip
+  - python=3.11
+  - pip:
+      - PyExifTool
+

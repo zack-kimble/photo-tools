@@ -36,7 +36,6 @@ from dask.distributed import Client
 # what to do about jpegs, NEFs and XMP for same pic? - figure out in df after? Could merge based on subsec create date
 
 
-column_dictionary = dict(time_id=[], filepath=[], metadata_key=[], metadata_value=[]) #,file_suffix=[], file_prefix=[])
 
 
 def get_filepaths(directories: list, file_types: list):
@@ -177,7 +176,7 @@ def init_meta_df(column_dictionary):
 
 
 def load_meta_df(meta_df_path):
-    meta_df = pd.read_pickle('meta_df.pkl')
+    meta_df = pd.read_pickle(meta_df_path)
     return meta_df
 
 
@@ -334,12 +333,15 @@ if __name__ == '__main__':
     meta_df_path = config['meta_df_path']
     exiftool_executable = config['exiftool_executable']
 
-    # start = datetime.datetime.now()
-    # print(f"starting future version: {start}")
-    # meta_df = update_meta_df_dask_futures(original_photo_dirs, column_dictionary, file_types, meta_df_path, append=False)
-    # end = datetime.datetime.now()
-    # print(f"finished future version: {end}")
-    # print(f"total time future version: {end-start}")
+    column_dictionary = dict(time_id=[], filepath=[], metadata_key=[],
+                             metadata_value=[])  # ,file_suffix=[], file_prefix=[])
+
+    start = datetime.datetime.now()
+    print(f"starting future version: {start}")
+    meta_df = update_meta_df_dask_futures(original_photo_dirs, column_dictionary, file_types, meta_df_path, append=False)
+    end = datetime.datetime.now()
+    print(f"finished future version: {end}")
+    print(f"total time future version: {end-start}")
 
     print(datetime.datetime.now())
     print("reading")
