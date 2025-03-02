@@ -1,9 +1,18 @@
-original_photo_dirs : ["/media/zack/WD 4TB/My Pictures/D800/", "/media/zack/WD 4TB/My Pictures/D700/Originals/", "/media/zack/WD 4TB/My Pictures/Z7/"]
-file_types : ["jpg", "nef", "tiff", "xmp", "jpeg"]
+db_url: "sqlite:///data/photo_db.sqlite"
+original_photo_dirs:
+  #- /media/zack/ST-4000MAG4/My Pictures/D800
+  - /media/zack/ST-4000MAG4/My Pictures/D700
+ # - /media/zack/ST-4000MAG4/My Pictures/Z7
+ # - /media/zack/1TB_P2/lr_edited_jpgs
+ # - /media/zack/1TB_P2/LR_jpgs
+ # - /media/zack/1TB_P2/Google takeout/Takeout/Google Photos
+
+file_types : [".jpg", ".nef", ".tiff", ".xmp", ".jpeg"]
 possible_metadata_keys:
-  timestamp : ["Composite:SubSecCreateDate", "Composite:CreateDate", "XMP:DateTimeOriginal"]
-  label_color: ["Label"]
-  rating: ["Rating"]
+  timestamp : ["Composite:SubSecCreateDate", "Composite:CreateDate", "XMP:DateTimeOriginal",
+               "XMP:CreateDate", "EXIF:DateTimeOriginal"]
+  label_color: ["XMP:Label"]
+  rating: ["XMP:Rating", "EXIF:Rating"]
 source_file_preference:
   - lr_edited_jpgs
   - /media/zack/WD 4TB/My Pictures/Z7/
@@ -11,3 +20,4 @@ source_file_preference:
   - /media/zack/WD 4TB/My Pictures/D700/picasa
   - /media/zack/WD 4TB/My Pictures/D700
   - lr_jpgs
+  - Google Photos

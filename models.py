@@ -43,15 +43,15 @@ Base = declarative_base(cls=AutoTableNameMixin)
 
 
 class PhotoSourceFile(Base):
-    absolute_path = Column(String, primary_key=True)
+    absolute_path_id = Column(String, primary_key=True)
     exif_metadata = Column(JSON)
     label_color = Column(String)
     rating = Column(Integer)
-    timestamp = Column(DateTime, ForeignKey('photo.timestamp_id'))
+    timestamp = Column(String, ForeignKey('photo.timestamp_id'))
     photo = relationship('Photo', back_populates='source_files', foreign_keys=[timestamp])
 
 class Photo(Base):
-    timestamp_id = Column(DateTime, primary_key=True)
+    timestamp_id = Column(String, primary_key=True)
     exif_metadata = Column(JSON)
     label_color = Column(String)
     rating = Column(Integer)
@@ -59,7 +59,11 @@ class Photo(Base):
     search_results = relationship('SearchResults', back_populates='photo')
     face_detection_run = Column(Boolean, nullable=False, default=False)
     source_files = relationship('PhotoSourceFile', back_populates='photo', foreign_keys=[PhotoSourceFile.timestamp])
-    reference_source_file = Column(String, ForeignKey('photo_source_file.absolute_path'), unique=True)
+    reference_source_file = Column(String, ForeignKey('photo_source_file.absolute_path_id'), unique=True)
+    reference_source = relationship(
+        'PhotoSourceFile',
+        foreign_keys=[reference_source_file]
+    )
 
     def to_dict(self):
         return {

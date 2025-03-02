@@ -3,10 +3,14 @@ channels:
   - defaults
 dependencies:
   - pandas
-  - dask
-  - numpy
   - pip
-  - python=3.11
+  - python
+  - Pillow
+  - conda-forge::pygraphviz
   - pip:
       - PyExifTool
+      - sqlalchemy
+      - pytest
+      - ruamel-yaml
+      - pydantic
 
