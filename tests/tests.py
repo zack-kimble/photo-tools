@@ -16,7 +16,6 @@ from main import (
     extract_exif_data,
     normalize_exif_data,
     process_file,
-    process_directory,
     select_reference_source,
     update_photos,
     Base,
@@ -212,7 +211,7 @@ def test_update_photo(config, valid_exif_blue, valid_exif_red):
     assert photo.rating == 1
 
 
-def test_process_file(session, tmp_path, monkeypatch, config, valid_exif_red):
+def test_process_file(tmp_path, monkeypatch, config, valid_exif_red):
     # Create a dummy file in the temporary directory.
     dummy_file = tmp_path / "dummy.jpg"
     dummy_file.write_text("dummy image content")
@@ -220,34 +219,152 @@ def test_process_file(session, tmp_path, monkeypatch, config, valid_exif_red):
     # Monkey-patch extract_exif_data to return a fixed EXIF dictionary.
     monkeypatch.setattr("main.extract_exif_data", lambda file_path, et: valid_exif_red)
 
-    process_file(dummy_file, session, config, exif_tool_helper=None)
+    psf = process_file(dummy_file, config, exif_tool_helper=None)
     # Verify that a PhotoSourceFile entry was created.
-    session.commit()
-    psf = session.query(PhotoSourceFile).filter_by(absolute_path_id=str(dummy_file)).first()
+
     assert psf is not None
     assert psf.rating == 1
     assert psf.label_color == "red"
-    # Verify that an associated Photo was created.
-    photo = session.get(Photo, psf.timestamp)
-    assert photo is not None
-    assert psf in photo.source_files
+    # # Verify that an associated Photo was created.
+    # photo = session.get(Photo, psf.timestamp)
+    # assert photo is not None
+    # assert psf in photo.source_files
 
-def test_process_directory(tmp_path, monkeypatch, config, valid_exif_red, engine, db_url):
-    # Create a temporary directory with one allowed file.
-    test_dir = tmp_path / "test_dir"
-    test_dir.mkdir()
-    dummy_file = test_dir / "dummy.jpg"
-    dummy_file.write_text("dummy image content")
+# def test_process_directory(tmp_path, monkeypatch, config, valid_exif_red, engine, db_url):
+#     # Create a temporary directory with one allowed file.
+#     test_dir = tmp_path / "test_dir"
+#     test_dir.mkdir()
+#     dummy_file = test_dir / "dummy.jpg"
+#     dummy_file.write_text("dummy image content")
+#
+#     # Monkey-patch extract_exif_data to return a fixed EXIF dictionary.
+#     monkeypatch.setattr("main.extract_exif_data", lambda file_path, et: valid_exif_red)
+#
+#
+#     Session = sessionmaker(bind=engine)
+#     session = Session()
+#
+#     process_directory(test_dir, db_url, config)
+#
+#     psf = session.query(PhotoSourceFile).filter_by(absolute_path_id=str(dummy_file)).first()
+#     assert psf is not None
+#     session.close()
 
-    # Monkey-patch extract_exif_data to return a fixed EXIF dictionary.
-    monkeypatch.setattr("main.extract_exif_data", lambda file_path, et: valid_exif_red)
 
 
-    Session = sessionmaker(bind=engine)
-    session = Session()
 
-    process_directory(test_dir, db_url, config)
 
-    psf = session.query(PhotoSourceFile).filter_by(absolute_path_id=str(dummy_file)).first()
-    assert psf is not None
-    session.close()
+# --- Test Cases ---
+
+def test_update_photo_normal(config, valid_exif_blue, valid_exif_red):
+    """
+    Test that update_photo selects the reference file according to the preference,
+    and that the photo's attributes (reference_source_file, label_color, rating, exif_metadata)
+    are updated correctly.
+    """
+    ts = valid_exif_blue["Composite:SubSecCreateDate"]
+    photo = Photo(timestamp_id=ts, exif_metadata={}, label_color=None, rating=None)
+
+    # psf1 has a path containing 'lr_edited' so it should be selected as reference.
+    psf1 = PhotoSourceFile(
+        absolute_path_id="/media/zack/something/lr_edited_jpgs/Image1.jpg",
+        rating=1,
+        label_color="red",
+        timestamp=ts,
+        exif_metadata=valid_exif_red
+    )
+    # psf2 has a different path.
+    psf2 = PhotoSourceFile(
+        absolute_path_id="/media/zack/WD 4TB/MyPictures/Image1.jpg",
+        rating=3,
+        label_color="blue",
+        timestamp=ts,
+        exif_metadata=valid_exif_blue
+    )
+    photo.source_files = [psf1, psf2]
+    update_photo(photo, config.source_file_preference)
+
+    # Expect psf1 to be chosen (its path matches "lr_edited").
+    assert photo.reference_source_file == psf1.absolute_path_id
+    # The photo's label_color and rating should come from psf1.
+    assert photo.label_color == psf1.label_color
+    assert photo.rating == psf1.rating
+    # The merged EXIF metadata is built by merging all source files and then overriding with the reference.
+    # In this case, since both have the same datetime and keys, the final result equals psf1.exif_metadata.
+    assert photo.exif_metadata == psf1.exif_metadata
+
+
+def test_update_photo_empty_source_files():
+    """
+    Test that update_photo does nothing when the Photo has no source_files.
+    (Note: the current implementation calls ValueError(...) but does not raise it.)
+    """
+    ts = "2023:03:15 12:30:45"
+    photo = Photo(timestamp_id=ts, exif_metadata={}, label_color=None, rating=None)
+    # Call update_photo with an arbitrary preference list.
+    update_photo(photo, source_file_preference=["lr_edited"])
+    # Expect no updates have been made.
+    assert photo.reference_source_file is None
+    assert photo.exif_metadata == {}
+    assert photo.label_color is None
+    assert photo.rating is None
+
+
+def test_update_photo_no_matching_preference(config, valid_exif_blue):
+    """
+    Test that if none of the source file paths match any of the given preferences,
+    the first source file is chosen as the reference.
+    """
+    # Modify the config so that the preference string does not occur in the file path.
+    config.source_file_preference = ["nonexistent_preference"]
+    ts = valid_exif_blue["Composite:SubSecCreateDate"]
+    photo = Photo(timestamp_id=ts, exif_metadata={}, label_color=None, rating=None)
+
+    psf1 = PhotoSourceFile(
+        absolute_path_id="/media/zack/some/other_path/Image1.jpg",
+        rating=2,
+        label_color="green",
+        timestamp=ts,
+        exif_metadata=valid_exif_blue
+    )
+    photo.source_files = [psf1]
+    update_photo(photo, config.source_file_preference)
+
+    # Since no preference matches, the first (and only) source file should be used.
+    assert photo.reference_source_file == psf1.absolute_path_id
+    assert photo.label_color == psf1.label_color
+    assert photo.rating == psf1.rating
+    assert photo.exif_metadata == psf1.exif_metadata
+
+
+def test_update_photo_order_independence(config, valid_exif_blue, valid_exif_red):
+    """
+    Test that the order of source_files does not affect the outcome.
+    The reference file should be selected based solely on the preference criteria.
+    """
+    ts = valid_exif_blue["Composite:SubSecCreateDate"]
+    photo = Photo(timestamp_id=ts, exif_metadata={}, label_color=None, rating=None)
+
+    psf1 = PhotoSourceFile(
+        absolute_path_id="/media/zack/something/lr_edited_jpgs/Image1.jpg",
+        rating=1,
+        label_color="red",
+        timestamp=ts,
+        exif_metadata=valid_exif_red
+    )
+    psf2 = PhotoSourceFile(
+        absolute_path_id="/media/zack/WD 4TB/MyPictures/Image1.jpg",
+        rating=3,
+        label_color="blue",
+        timestamp=ts,
+        exif_metadata=valid_exif_blue
+    )
+    # Reverse the order of the source files.
+    photo.source_files = [psf2, psf1]
+    update_photo(photo, config.source_file_preference)
+
+    # psf1 should still be selected as the reference due to its matching substring.
+    assert photo.reference_source_file == psf1.absolute_path_id
+    assert photo.label_color == psf1.label_color
+    assert photo.rating == psf1.rating
+    assert photo.exif_metadata == psf1.exif_metadata

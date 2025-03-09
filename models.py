@@ -49,6 +49,7 @@ class PhotoSourceFile(Base):
     rating = Column(Integer)
     timestamp = Column(String, ForeignKey('photo.timestamp_id'))
     photo = relationship('Photo', back_populates='source_files', foreign_keys=[timestamp])
+    last_updated = Column(DateTime) #TODO: should I rename since this is the last time the file was updated?
 
 class Photo(Base):
     timestamp_id = Column(String, primary_key=True)

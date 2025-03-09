@@ -1,11 +1,12 @@
 db_url: "sqlite:///data/photo_db.sqlite"
 original_photo_dirs:
-  #- /media/zack/ST-4000MAG4/My Pictures/D800
+  #- /media/zack/ST-4000MAG4/My Pictures/D800/2014-2H
+  - /media/zack/ST-4000MAG4/My Pictures/D800
   - /media/zack/ST-4000MAG4/My Pictures/D700
- # - /media/zack/ST-4000MAG4/My Pictures/Z7
- # - /media/zack/1TB_P2/lr_edited_jpgs
- # - /media/zack/1TB_P2/LR_jpgs
- # - /media/zack/1TB_P2/Google takeout/Takeout/Google Photos
+  - /media/zack/ST-4000MAG4/My Pictures/Z7
+  - /media/zack/1TB_P2/lr_edited_jpgs
+  - /media/zack/1TB_P2/LR_jpgs
+  - /media/zack/1TB_P2/Google takeout/Takeout/Google Photos
 
 file_types : [".jpg", ".nef", ".tiff", ".xmp", ".jpeg"]
 possible_metadata_keys:
@@ -15,9 +16,9 @@ possible_metadata_keys:
   rating: ["XMP:Rating", "EXIF:Rating"]
 source_file_preference:
   - lr_edited_jpgs
-  - /media/zack/WD 4TB/My Pictures/Z7/
+  - My Pictures/Z7/
   - lr_jpgs/My Pictures/D800
-  - /media/zack/WD 4TB/My Pictures/D700/picasa
-  - /media/zack/WD 4TB/My Pictures/D700
+  - My Pictures/D700/working jpegs/picasa
+  - My Pictures/D700
   - lr_jpgs
   - Google Photos
