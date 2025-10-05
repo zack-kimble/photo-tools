@@ -3,6 +3,7 @@ import os
 import re
 import io
 import logging
+import shutil
 import sys
 import warnings
 from datetime import datetime
@@ -29,6 +30,7 @@ from typing import List, Dict, Callable, Any, Optional, Iterable
 
 from pathlib import Path
 
+from filters import apply_photo_filter
 
 # --- Logging Configuration ---
 logger = logging.getLogger(__name__)
@@ -46,10 +48,12 @@ class Config:
     file_types: List[str]
     possible_metadata_keys: PossibleMetadataKeys
     source_file_preference: List[str]
+    destination_dir: Path
     db_url: str = "sqlite:///photos.db"
     batch_size: int = 100
     default_filter: Dict = None
     slideshows: List[Dict[str, Any]] = None
+
 
 
     @staticmethod
@@ -359,7 +363,7 @@ def process_batch(files: List[Path], config: Config):
 #         session.close()
 
 
-def select_reference_source(photo, preferences):
+def select_reference_source(photo: Photo, preferences: List[str]) -> PhotoSourceFile:
     """
     Given a Photo with multiple source files, select the reference source file
     based on the ordered preference list. For each preference, if a source file's
@@ -646,16 +650,31 @@ def copy_photo_files_to_destination_directory(session, config: Config):
     Retrieves Photos based on default filter in config, then copies the reference source files to config's destination directory.
     Preserves directory structure relative to original_photo_dirs.
     """
+    #ensure destination directory exists
+    dest_dir = Path(config.destination_dir)
+    dest_dir.mkdir(parents=True, exist_ok=True)
 
     #retrieve photos based on default filter
+    q = session.query(Photo)
+    q = apply_photo_filter(q, config.default_filter)
+    photos = q.all()
+    for photo in photos:
+        source_path = Path(photo.reference_source.absolute_path_id)
+        dest_path = Path(config.destination_dir).joinpath(source_path)
+        dest_path.parent.mkdir(parents=True, exist_ok=True)
+        if dest_path.exists() and dest_path.stat().st_ctime >= source_path.stat().st_mtime:
+            logger.info(f"Skipping existing file {dest_path}. Already has same or newer content.")
+            continue
+        try:
+            shutil.copy2(source_path, dest_path)
+        except Exception as e:
+            warnings.warn(f"Error copying file {source_path} to {dest_path}: {e}")
+            logger.warning(f"Error copying file {source_path} to {dest_path}: {e}")
+            continue
+        logger.info(f"Copied {source_path} to {dest_path}")
 
 
-    #ensure destination directory exists
-    dest_dir = Path(config.destination_directory)
-    dest_dir.mkdir(parents=True, exist_ok=True)
 
 
 if __name__ == "__main__":
     main()
-
-#TODO: 3/8/2025: works correctly. Need to clean up many functions and expand text coverage.

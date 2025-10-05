@@ -75,7 +75,7 @@ class Photo(Base):
     reference_source = relationship(
         'PhotoSourceFile',
         foreign_keys=[reference_source_file]
-    )
+    ) #TODO: check if this is even being populated
 
     def to_dict(self):
         return {

@@ -297,3 +297,173 @@ class Photo(Base):
         return data
 
 ```
+
+I'm trying to add PhotoSourceFile objects to Photo Objects I've created for testing. But the PhotoSourceFile ojbect isn't showing up in the DB
+
+```python
+
+def make_test_photos():
+    """
+    Returns a list[Photo] with varied timestamps, keywords, and ratings.
+    Coverage:
+      - "Last Year" (2024-05-01 .. 2025-07-10): P02, P03, P04, P05
+      - "Asia 2014" (keywords contains "Asia 2014"): P06, P07
+      - "Mountains" (keywords contains "mountain" or "mountains"): P03, P08, P09
+      - "Christmas" (month == 12): P07, P10, P11, P12
+      - "best" (rating == 5): P02, P08, P12, P13
+    Many others intentionally do not match each query.
+    """
+    photos = []
+
+    # Helper for concise object creation
+    def P(ts, *, keywords=None, rating=None, label_color=None, **meta):
+        return Photo(
+            timestamp_id=ts,
+            exif_metadata=meta or {"camera": "Nikon", "iso": 200},
+            label_color=label_color or "none",
+            rating=rating,
+            keywords=list(keywords or []),
+        )
+
+    psf = [PhotoSourceFile(
+        absolute_path_id="tests/test_assets/_DSC2510.jpg", timestamp=datetime(2024, 5, 10, 14, 30, 0))]
+
+    # ---- Within "Last Year" range: 2024-05-01 .. 2025-07-10 ----
+    photos.append(P(datetime(2024, 5, 10, 14, 30, 0),  # P02
+                    keywords=["spring", "family"],
+                    rating=5,
+                    label_color="Red",
+                    camera="Fuji X-T5", iso=320))
+    photos.append(P(datetime(2024, 11, 2, 9, 12, 0),   # P03
+                    keywords=["hike", "mountain"],
+                    rating=3,
+                    camera="Nikon D800", iso=400))
+    photos.append(P(datetime(2025, 1, 15, 18, 5, 0),   # P04
+                    keywords=["city", "night"],
+                    rating=4,
+                    camera="iPhone", iso=125))
+    photos.append(P(datetime(2025, 4, 1, 7, 0, 0),     # P05
+                    keywords=["summer", "beach"],
+                    rating=2,
+                    camera="Ricoh GR", iso=100))
+
+    # ---- Asia 2014 (keyword must include "Asia 2014") ----
+    photos.append(P(datetime(2014, 6, 15, 10, 0, 0),   # P06
+                    keywords=["Asia 2014", "temple", "street"],
+                    rating=4,
+                    camera="Nikon D700", iso=200))
+    photos.append(P(datetime(2014, 12, 24, 20, 45, 0), # P07 (also Christmas by month)
+                    keywords=["asia 2014", "market", "night"],
+                    rating=3,
+                    camera="Nikon D700", iso=800))
+
+    # ---- Mountains (keywords: "mountain" or "mountains") ----
+    photos.append(P(datetime(2023, 9, 10, 6, 30, 0),   # P08
+                    keywords=["landscape", "Mountains", "sunrise"],
+                    rating=5,
+                    camera="Nikon Z7", iso=64))
+    photos.append(P(datetime(2022, 2, 19, 12, 0, 0),   # P09
+                    keywords=["ski", "mountain"],
+                    rating=4,
+                    camera="Sony A7C", iso=200))
+
+    # ---- Christmas (month == 12, any year) ----
+    photos.append(P(datetime(2018, 12, 25, 9, 0, 0),   # P10
+                    keywords=["family", "tree"],
+                    rating=4,
+                    camera="Canon 5D", iso=400))
+    photos.append(P(datetime(2023, 12, 5, 19, 30, 0),  # P11
+                    keywords=["city", "lights"],
+                    rating=3,
+                    camera="iPhone", iso=250))
+    photos.append(P(datetime(2025, 12, 1, 8, 15, 0),   # P12 (also best)
+                    keywords=["winter", "snow"],
+                    rating=5,
+                    camera="Nikon Zf", iso=200))
+
+    # ---- Best (rating == 5) — include some not matching others ----
+    photos.append(P(datetime(2021, 3, 3, 15, 45, 0),   # P13
+                    keywords=["portrait"],
+                    rating=5,
+                    camera="Fujifilm X100V", iso=160))
+
+    # ---- Negatives / fillers (don’t match any filter) ----
+    photos.append(P(datetime(2013, 4, 2, 11, 11, 0),   # P14
+                    keywords=["garden", "macro"],
+                    rating=2,
+                    camera="Olympus E-M5", iso=200))
+    photos.append(P(datetime(2025, 8, 20, 13, 25, 0),  # P15 (outside Last Year end_date, not Dec)
+                    keywords=["park", "dog"],
+                    rating=1,
+                    camera="iPhone", iso=50))
+    photos.append(P(datetime(2020, 1, 10, 10, 10, 0),  # P16
+                    keywords=["indoor", "product"],
+                    rating=3,
+                    camera="Sony RX100", iso=200))
+
+    return psf, photos
+
+# Example: add to a session for testing
+# session.add_all(make_test_photos())
+# session.commit()
+
+
+@pytest.fixture
+def add_photos(session):
+    psf, photos = make_test_photos()
+    session.add_all(psf)
+    session.add_all(photos)
+    session.commit()
+    yield
+    session.query(Photo).delete()
+    session.commit()
+
+```
+
+Here are the models:
+```python
+
+class PhotoSourceFile(Base):
+    absolute_path_id = Column(String, primary_key=True)
+    exif_metadata = Column(JSON)
+    label_color = Column(String)
+    rating = Column(Integer)
+    keywords: Mapped[list[str]] = mapped_column(
+        MutableList.as_mutable(JSON),   # track in-place .append/.remove changes
+        default=list,                   # avoid default=[]
+        nullable=False
+    )
+    timestamp = Column(DateTime, ForeignKey('photo.timestamp_id'))
+    photo = relationship('Photo', back_populates='source_files', foreign_keys=[timestamp])
+    last_updated = Column(DateTime) #TODO: should I rename since this is the last time the file was updated?
+
+class Photo(Base):
+    timestamp_id = Column(DateTime, primary_key=True)
+    exif_metadata = Column(JSON)
+    label_color = Column(String)
+    rating = Column(Integer)
+    keywords: Mapped[list[str]] = mapped_column(
+        MutableList.as_mutable(JSON),   # track in-place .append/.remove changes
+        default=list,                   # avoid default=[]
+        nullable=False
+    )
+    photo_faces = relationship('PhotoFace')
+    search_results = relationship('SearchResults', back_populates='photo')
+    face_detection_run = Column(Boolean, nullable=False, default=False)
+    source_files = relationship('PhotoSourceFile', back_populates='photo', foreign_keys=[PhotoSourceFile.timestamp])
+    reference_source_file = Column(String, ForeignKey('photo_source_file.absolute_path_id'), unique=True)
+    reference_source = relationship(
+        'PhotoSourceFile',
+        foreign_keys=[reference_source_file]
+    )
+
+    def to_dict(self):
+        return {
+            'photo_id': self.timestamp_id,
+            'metadata': self.exif_metadata,
+            'label_color': self.label_color,
+            'rating': self.rating,
+        }
+        return data
+
+```

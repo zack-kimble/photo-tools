@@ -3,6 +3,8 @@ from datetime import datetime
 from pathlib import Path
 
 import pytest
+from pytest import MonkeyPatch
+
 from exiftool import ExifToolHelper
 
 
@@ -20,7 +22,8 @@ from main import (
     Photo,
     PhotoSourceFile,
     update_photo,
-    add_directory_to_IPTC_keywords
+    add_directory_to_IPTC_keywords,
+    copy_photo_files_to_destination_directory
 )
 
 # --- Fixtures ---
@@ -407,3 +410,13 @@ def test_update_photo_order_independence(config, valid_exif_blue, valid_exif_red
     assert photo.label_color == psf1.label_color
     assert photo.rating == psf1.rating
     assert photo.exif_metadata == psf1.exif_metadata
+
+
+def test_copy_photo_files_to_destination_directory(tmp_path, session, config, monkeypatch, add_photos):
+    target = Path(tmp_path / "destination_photos")
+    monkeypatch.setattr(config,'destination_dir', target)
+    copy_photo_files_to_destination_directory(session,config)
+
+    assert target.exists()
+    paths = [(root,dirs,files) for root,dirs,files in target.walk()]
+    assert paths[2][2][0] == '_DSC2510.jpg'

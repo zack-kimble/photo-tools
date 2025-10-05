@@ -14,7 +14,7 @@ from models import Photo
 
 
 
-def _date_part_expr(timestamp_col, date_parts: Dict[str, Any], dialect_name: str):
+def _date_part_expr(timestamp_col, date_parts: Dict[str, Any]):
     """
     Build AND of equality expressions for provided date parts.
     """
@@ -26,7 +26,7 @@ def _date_part_expr(timestamp_col, date_parts: Dict[str, Any], dialect_name: str
     return clauses
 
 
-def _keywords_or_clause(dialect_name: str, keywords: Iterable[str], json_col):
+def _keywords_or_clause(keywords: Iterable[str]):
     """
     Build an OR clause that matches any of the given keywords in a JSON list column.
 
@@ -43,8 +43,6 @@ def _keywords_or_clause(dialect_name: str, keywords: Iterable[str], json_col):
 
 def build_photo_filter_clauses(
     f: Dict[str, Any],
-    *,
-    dialect_name: str,
 ) -> List[BinaryExpression]:
     """
     Translate a filter dict (from your YAML) into a list of SQLAlchemy clauses
@@ -80,7 +78,6 @@ def build_photo_filter_clauses(
             _date_part_expr(
                 Photo.timestamp_id,
                 dp,
-                dialect_name=dialect_name
             )
         )
 
@@ -92,7 +89,7 @@ def build_photo_filter_clauses(
             kw_list = [kw_val]
         else:
             kw_list = list(kw_val)
-        kw_clause = _keywords_or_clause(dialect_name, kw_list, Photo.keywords)
+        kw_clause = _keywords_or_clause(kw_list)
         if kw_clause is not None:
             clauses.append(kw_clause)
 
@@ -130,17 +127,8 @@ def apply_photo_filter(
         q = apply_photo_filter(q, filt, dialect_name=session.bind.dialect.name)
         rows = q.all()
     """
-    if dialect_name is None:
-        # Try to sniff from the query if possible (best effort)
-        try:
-            dialect_name = query_or_select.session.bind.dialect.name  # type: ignore[attr-defined]
-        except AttributeError:
-            # Fallback to a generic choice
-            dialect_name = "sqlite"
-
     clauses = build_photo_filter_clauses(
         filter_dict,
-        dialect_name=dialect_name,
     )
     if not clauses:
         return query_or_select
