@@ -162,3 +162,138 @@ for each photo object in db
     update photo object in db
 
 ```
+
+
+
+Create a python function that accepts a filter defined in yaml and translates it into a sqlalchemy query filter. Assume that the attributes of a filter are all connected by "and" statements and that any values given as lists are connect with "or" statements. The filter can contain the following attributes: start_date, end_date, date_part (which can contain datetime parts), keywords (list), labels (list), rating (int). `start_date` filters to pictures with `Photo.timestamp_id >= start_date`, `end_date` filters to pictures with `Photo.timestamp_id <= end_date`. `date_part` can contain any datetime.datetime date parts and filters to pictures where the corresponding part of `Photo.timestamp_id` matches the value. `keywords` filters to pictures where any of the keywords are present in `Photo.keywords` (which is a list). `labels` filters to pictures where `Photo.label_color` is in the list of labels. `rating` filters to pictures where `Photo.rating >= rating`.
+
+Example filters:
+
+```yaml
+default_filter:
+  labels: "Red"
+slideshows:
+  - name: "Last Year"
+    description: "photos from the last year"
+    filter:
+      start_date: "2024-05-01"
+      end_date: "2025-07-10"
+
+  - name: "Asia 2014"
+    description: "photos from my Asia trip in 2014"
+    filter:
+      keywords: ["Asia 2014"]
+
+  - name: "Mountains"
+    description: "mountain photos"
+    filter:
+      keywords: ["mountain", "mountains"]
+
+  - name: "Christmas"
+    description: "Christmas photos"
+    filter:
+      date_part:
+        month: 12
+  
+  - name: "best"
+    description: "best photos"
+    filter:
+      rating: 5
+```
+
+Photo model:
+```python
+class Photo(Base):
+    timestamp_id = Column(String, primary_key=True)
+    exif_metadata = Column(JSON)
+    label_color = Column(String)
+    rating = Column(Integer)
+    keywords: Mapped[list[str]] = mapped_column(
+        MutableList.as_mutable(JSON),   # track in-place .append/.remove changes
+        default=list,                   # avoid default=[]
+        nullable=False
+    )
+    photo_faces = relationship('PhotoFace')
+    search_results = relationship('SearchResults', back_populates='photo')
+    face_detection_run = Column(Boolean, nullable=False, default=False)
+    source_files = relationship('PhotoSourceFile', back_populates='photo', foreign_keys=[PhotoSourceFile.timestamp])
+    reference_source_file = Column(String, ForeignKey('photo_source_file.absolute_path_id'), unique=True)
+    reference_source = relationship(
+        'PhotoSourceFile',
+        foreign_keys=[reference_source_file]
+    )
+
+    def to_dict(self):
+        return {
+            'photo_id': self.timestamp_id,
+            'metadata': self.exif_metadata,
+            'label_color': self.label_color,
+            'rating': self.rating,
+        }
+        return data
+```
+
+
+
+given the following filters and photo model below, create test photo objects. There should be at least 1 object returned for each query and multiple that are not.
+
+```yaml
+  - name: "Last Year"
+    description: "photos from the last year"
+    filter:
+      start_date: "2024-05-01"
+      end_date: "2025-07-10"
+
+  - name: "Asia 2014"
+    description: "photos from my Asia trip in 2014"
+    filter:
+      keywords: ["Asia 2014"]
+
+  - name: "Mountains"
+    description: "mountain photos"
+    filter:
+      keywords: ["mountain", "mountains"]
+
+  - name: "Christmas"
+    description: "Christmas photos"
+    filter:
+      date_part:
+        month: 12
+
+  - name: "best"
+    description: "best photos"
+    filter:
+      rating: 5
+```
+
+```python
+class Photo(Base):
+    timestamp_id = Column(DateTime, primary_key=True)
+    exif_metadata = Column(JSON)
+    label_color = Column(String)
+    rating = Column(Integer)
+    keywords: Mapped[list[str]] = mapped_column(
+        MutableList.as_mutable(JSON),   # track in-place .append/.remove changes
+        default=list,                   # avoid default=[]
+        nullable=False
+    )
+    photo_faces = relationship('PhotoFace')
+    search_results = relationship('SearchResults', back_populates='photo')
+    face_detection_run = Column(Boolean, nullable=False, default=False)
+    source_files = relationship('PhotoSourceFile', back_populates='photo', foreign_keys=[PhotoSourceFile.timestamp])
+    reference_source_file = Column(String, ForeignKey('photo_source_file.absolute_path_id'), unique=True)
+    reference_source = relationship(
+        'PhotoSourceFile',
+        foreign_keys=[reference_source_file]
+    )
+
+    def to_dict(self):
+        return {
+            'photo_id': self.timestamp_id,
+            'metadata': self.exif_metadata,
+            'label_color': self.label_color,
+            'rating': self.rating,
+        }
+        return data
+
+```

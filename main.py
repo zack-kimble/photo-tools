@@ -25,7 +25,7 @@ from ruamel.yaml import YAML
 yaml = YAML(typ="safe")
 from dataclasses import asdict
 from pydantic.dataclasses import dataclass
-from typing import List, Dict, Callable, Any, Optional
+from typing import List, Dict, Callable, Any, Optional, Iterable
 
 from pathlib import Path
 
@@ -42,16 +42,21 @@ class PossibleMetadataKeys:
 
 @dataclass
 class Config:
-    original_photo_dirs: List[str]
+    original_photo_dirs: List[Path]
     file_types: List[str]
     possible_metadata_keys: PossibleMetadataKeys
     source_file_preference: List[str]
     db_url: str = "sqlite:///photos.db"
+    batch_size: int = 100
+    default_filter: Dict = None
+    slideshows: List[Dict[str, Any]] = None
+
 
     @staticmethod
     def load_from_yaml(yaml_str: str) -> "Config":
         with open(yaml_str, "r") as f:
             data = yaml.load(f)
+        data['original_photo_dirs'] = [Path(p) for p in data['original_photo_dirs']]
         return Config(**data)
 
 
@@ -193,6 +198,51 @@ def normalize_exif_data(exif: Dict, possible_metadata_keys: PossibleMetadataKeys
 
     return normalized_exif_data
 
+def split_parent_directories(file_path: Path, original_photo_dirs: List[Path]) -> List[str]:
+    parents = []
+    # Iterate through parents from immediate parent top, excluding root
+    for path in file_path.parents[:-1]:
+        if path in original_photo_dirs:
+            return parents
+        else:
+            parents.append(path.name)
+    raise ValueError(f"File {file_path} is not in any of the original_photo_dirs {original_photo_dirs}")
+
+
+def add_directory_to_IPTC_keywords(file_path: Path, exif: Dict, original_photo_dirs: List[Path]):
+    """
+    Adds the directory path of the file to the EXIF tags dictionary.
+    """
+
+    directory_keywords = split_parent_directories(file_path,original_photo_dirs)
+    current_keywords = exif.get('IPTC:Keywords')
+    if isinstance(current_keywords, str):
+        directory_keywords.append(current_keywords)
+        exif['IPTC:Keywords'] = directory_keywords
+    elif isinstance(current_keywords, list):
+        for directory in directory_keywords:
+            if directory not in current_keywords:
+                exif['IPTC:Keywords'].append(directory)
+    else:
+        exif['IPTC:Keywords'] = directory_keywords
+    return
+
+def parse_exif_timestamp(s: str) -> datetime:
+    """
+    Parse EXIF-like timestamp strings that may include fractional seconds and/or timezone info.
+    """
+    formats = [
+        "%Y:%m:%d %H:%M:%S.%f%z",  # with fraction + tz
+        "%Y:%m:%d %H:%M:%S%z",     # without fraction + tz
+        "%Y:%m:%d %H:%M:%S.%f",    # with fraction, no tz
+        "%Y:%m:%d %H:%M:%S",       # plain
+    ]
+    for fmt in formats:
+        try:
+            return datetime.strptime(s, fmt)
+        except ValueError:
+            continue
+    raise ValueError(f"Unrecognized timestamp format: {s}")
 
 def process_file(file_path, config, exif_tool_helper) -> PhotoSourceFile | None:
     """
@@ -202,16 +252,26 @@ def process_file(file_path, config, exif_tool_helper) -> PhotoSourceFile | None:
 
     exif_data = extract_exif_data(file_path, exif_tool_helper)
     normalized_exif = normalize_exif_data(exif_data, config.possible_metadata_keys)
-    timestamp_id = normalized_exif.get("timestamp")
-    if not timestamp_id:
+    add_directory_to_IPTC_keywords(file_path=file_path,
+                                   exif=normalized_exif,
+                                   original_photo_dirs=config.original_photo_dirs)
+
+    timestamp = normalized_exif.get("timestamp")
+    if not timestamp:
         warnings.warn(f"Missing datetime for file {file_path}. Unable to create PhotoSourceFile")
+        return
+    try:
+        timestamp_dt = parse_exif_timestamp(timestamp)
+    except ValueError:
+        warnings.warn(f"Invalid timestamp {timestamp} for file {file_path}. Unable to create PhotoSourceFile")
         return
     photo_source_file = PhotoSourceFile(
         absolute_path_id=str(file_path),
         exif_metadata=exif_data,
         label_color=normalized_exif.get("label_color"),
         rating=normalized_exif.get("rating"),
-        timestamp=timestamp_id,
+        keywords=normalized_exif.get("IPTC:Keywords"),
+        timestamp=timestamp_dt,
         last_updated=datetime.fromtimestamp(file_path.stat().st_mtime)
     )
 
@@ -308,9 +368,9 @@ def select_reference_source(photo, preferences):
     """
     for pref in preferences:
         for psf in photo.source_files:
-            if pref in psf.absolute_path_id:
+            if pref.lower() in psf.absolute_path_id.lower():
                 return psf
-    warnings.warn(f"No reference source file found for photo {photo.timestamp_id}. Using first source file.")
+    warnings.warn(f"No preferred reference source file found for photo {photo.timestamp_id}. Using first source file: {photo.source_files[0].absolute_path_id}.")
     return photo.source_files[0]
 
 def merge_exif_data(photo_source_files: list[PhotoSourceFile], reference_photo_source_file: PhotoSourceFile) -> Dict:
@@ -331,6 +391,7 @@ def update_photo(photo: Photo, source_file_preference):
     # Use reference file's label_color and rating.
     photo.label_color = reference_file.label_color
     photo.rating = reference_file.rating
+    photo.keywords = reference_file.keywords
     # Merge EXIF data from all source files, making sure reference file's data takes precedence.
     photo.exif_metadata = merge_exif_data(photo.source_files, reference_file)
     return
@@ -475,7 +536,7 @@ class BatchProcessor:
             self.processing_fn(self.current_batch)
             self.batches_processed += len(self.current_batch)
             self.current_batch = []
-            logger.info(f"Processed {self.batches_processed} items")
+            logger.info(f"Processed {self.batches_processed} batches, about {self.batches_processed * self.batch_size} items")
 
 
 
@@ -533,7 +594,7 @@ def main():
     logger.info(f"Found {len(files)} files with correct type.")
 
     # Process files in batches
-    batches = make_lazy_batches(files, 100)
+    batches = make_lazy_batches(files, config.batch_size)
 
     process_batch_partial = partial(process_batch, config=config)
     db_writer_partial = partial(db_writer, config=config)
@@ -579,6 +640,19 @@ def main():
     # print(s.getvalue())
 
     session.close()
+
+def copy_photo_files_to_destination_directory(session, config: Config):
+    """
+    Retrieves Photos based on default filter in config, then copies the reference source files to config's destination directory.
+    Preserves directory structure relative to original_photo_dirs.
+    """
+
+    #retrieve photos based on default filter
+
+
+    #ensure destination directory exists
+    dest_dir = Path(config.destination_directory)
+    dest_dir.mkdir(parents=True, exist_ok=True)
 
 
 if __name__ == "__main__":

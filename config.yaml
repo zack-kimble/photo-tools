@@ -1,12 +1,15 @@
 db_url: "sqlite:///data/photo_db.sqlite"
+batch_size: 100
 original_photo_dirs:
   #- /media/zack/ST-4000MAG4/My Pictures/D800/2014-2H
-  - /media/zack/ST-4000MAG4/My Pictures/D800
-  - /media/zack/ST-4000MAG4/My Pictures/D700
-  - /media/zack/ST-4000MAG4/My Pictures/Z7
-  - /media/zack/1TB_P2/lr_edited_jpgs
-  - /media/zack/1TB_P2/LR_jpgs
-  - /media/zack/1TB_P2/Google takeout/Takeout/Google Photos
+  - /media/zack/1TB_P2/LR_jpgs/My Pictures/Z7/2021-Q3/Alaska/Anchorage etc
+  - /media/zack/1TB_P2/LR_jpgs/My Pictures/D800/2014-1H
+#  - /media/zack/ST-4000MAG4/My Pictures/D800
+#  - /media/zack/ST-4000MAG4/My Pictures/D700
+#  - /media/zack/ST-4000MAG4/My Pictures/Z7
+#  - /media/zack/1TB_P2/lr_edited_jpgs
+#  - /media/zack/1TB_P2/LR_jpgs
+#  - /media/zack/1TB_P2/Google takeout/Takeout/Google Photos
 
 file_types : [".jpg", ".nef", ".tiff", ".xmp", ".jpeg"]
 possible_metadata_keys:
@@ -22,3 +25,41 @@ source_file_preference:
   - My Pictures/D700
   - lr_jpgs
   - Google Photos
+destination_dir: "/media/zack/ST-4000MAG4/tv_slideshows"
+default_filter:
+  labels: "Red"
+slideshows:
+  - name: "Last Year"
+    description: "photos from the last year"
+    filter:
+      start_date: "2024-05-01"
+      end_date: "2025-04-30"
+
+  - name: "Asia 2014"
+    description: "photos from my Asia trip in 2014"
+    filter:
+      keywords: ["Asia 2014"]
+
+  - name: "Mountains"
+    description: "mountain photos"
+    filter:
+      keywords: ["mountain", "mountains"]
+
+  - name: "Christmas"
+    description: "Christmas photos"
+    filter:
+      date_part:
+        month: 12
+
+  - name: "best"
+    description: "best photos"
+    filter:
+      rating: 5
+
+  - name: "Last year mountains"
+    description: "mountain photos from the last year"
+    filter:
+      start_date: "2024-05-01"
+      end_date: "2025-04-30"
+      keywords: ["mountain", "mountains"]
+

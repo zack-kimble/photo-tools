@@ -1,12 +1,10 @@
 import logging
-import os
 from datetime import datetime
 from pathlib import Path
 
 import pytest
 from exiftool import ExifToolHelper
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
+
 
 # Import functions and models from your main module.
 # Adjust the import statement if your module name differs.
@@ -20,7 +18,9 @@ from main import (
     update_photos,
     Base,
     Photo,
-    PhotoSourceFile, update_photo
+    PhotoSourceFile,
+    update_photo,
+    add_directory_to_IPTC_keywords
 )
 
 # --- Fixtures ---
@@ -42,26 +42,13 @@ def image_path_moto(tmp_path):
     return Path("tests/test_assets/IMG_20191124_193029019.jpg")
 
 @pytest.fixture
-def config():
-    return Config.load_from_yaml("config.yaml")
+def image_path_itpc_kw_array(tmp_path):
+    return Path("tests/test_assets/DSC_0233_list_keywords.jpg")
 
 @pytest.fixture
-def db_url():
-    return "sqlite:///tests/db/test_database.db"
+def image_path_itpc_kw_singleton(tmp_path):
+    return Path("tests/test_assets/DSC_0242_single_string_keyword.jpg")
 
-@pytest.fixture
-def engine(db_url):
-    engine = create_engine(db_url)
-    Base.metadata.create_all(engine)
-    yield engine
-    os.remove("tests/db/test_database.db")
-
-@pytest.fixture
-def session(engine):
-    Session = sessionmaker(bind=engine)
-    session = Session()
-    yield session
-    session.close()
 
 @pytest.fixture
 def valid_exif_blue():
@@ -78,6 +65,19 @@ def valid_exif_red():
         "XMP:Label": "red"
     }
 
+@pytest.fixture
+def valid_exif_IPTC_keywords_array():
+    return {
+        "Composite:SubSecCreateDate": "2023:03:15 12:30:45",
+        "IPTC:Keywords": ['cherry blossom', 'greenway'],
+    }
+
+@pytest.fixture
+def valid_exif_IPTC_keywords_singleton():
+    return {
+        "Composite:SubSecCreateDate": "2023:03:15 12:30:45",
+        "IPTC:Keywords": 'squirrel',
+    }
 
 @pytest.fixture
 def invalid_exif():
@@ -118,6 +118,13 @@ def test_extract_exif_data_moto(image_path_moto,exif_tool_helper):
     assert "XMP:Label"  not in exif_data
     assert "EXIF:DateTimeOriginal" in exif_data
 
+def test_extract_exif_data_itpc_kw_array(image_path_itpc_kw_array,exif_tool_helper):
+    exif_data = extract_exif_data(image_path_itpc_kw_array,exif_tool_helper)
+    assert  exif_data["IPTC:Keywords"] == ['cherry blossom', 'greenway']
+
+def test_extract_exif_data_itpc_kw_singleton(image_path_itpc_kw_singleton, exif_tool_helper):
+    exif_data = extract_exif_data(image_path_itpc_kw_singleton,exif_tool_helper)
+    assert exif_data["IPTC:Keywords"] == 'squirrel'
 
 
 def test_get_leaf_directories(tmp_path):
@@ -160,6 +167,37 @@ def test_normalize_invalid_exif_data(config, invalid_exif, caplog):
 
     # Check that a warning message was logged.
     assert "Missing key timestamp in normalized exif data" in caplog.text
+
+def test_add_directory_to_IPTC_keywords_array(image_path_itpc_kw_array, valid_exif_IPTC_keywords_array):
+    original_photo_dirs = [Path('tests/'),Path('photo-tools/')]
+    add_directory_to_IPTC_keywords(image_path_itpc_kw_array,
+                                   valid_exif_IPTC_keywords_array,
+                                   original_photo_dirs=original_photo_dirs)
+    assert 'test_assets' in valid_exif_IPTC_keywords_array['IPTC:Keywords']
+    assert isinstance(valid_exif_IPTC_keywords_array['IPTC:Keywords'], list)
+
+def test_add_directory_to_IPTC_keywords_singleton(image_path_itpc_kw_singleton, valid_exif_IPTC_keywords_singleton):
+    original_photo_dirs = [Path('tests/'),Path('photo-tools/')]
+    add_directory_to_IPTC_keywords(image_path_itpc_kw_singleton,
+                                   valid_exif_IPTC_keywords_singleton,
+                                   original_photo_dirs=original_photo_dirs)
+    assert 'test_assets' in valid_exif_IPTC_keywords_singleton['IPTC:Keywords']
+    assert isinstance(valid_exif_IPTC_keywords_singleton['IPTC:Keywords'], list)
+
+def test_add_directory_to_IPTC_keywords_no_extant_IPTC_keywords(image_path_nikon, valid_exif_red):
+    original_photo_dirs = [Path('tests/'),Path('photo-tools/')]
+    add_directory_to_IPTC_keywords(image_path_nikon,
+                                   valid_exif_red,
+                                   original_photo_dirs=original_photo_dirs)
+    assert 'test_assets' in valid_exif_red['IPTC:Keywords']
+    assert isinstance(valid_exif_red['IPTC:Keywords'], list)
+
+def test_add_directory_to_IPTC_keywords_no_matching_dir(image_path_nikon, valid_exif_red):
+    original_photo_dirs = [Path('nonexistent_dir/'),Path('another_nonexistent_dir/')]
+    with pytest.raises(ValueError):
+        add_directory_to_IPTC_keywords(image_path_nikon,
+                                       valid_exif_red,
+                                       original_photo_dirs=original_photo_dirs)
 
 
 def test_select_reference_source(config):
@@ -211,20 +249,21 @@ def test_update_photo(config, valid_exif_blue, valid_exif_red):
     assert photo.rating == 1
 
 
-def test_process_file(tmp_path, monkeypatch, config, valid_exif_red):
-    # Create a dummy file in the temporary directory.
-    dummy_file = tmp_path / "dummy.jpg"
-    dummy_file.write_text("dummy image content")
+def test_process_file(image_path_nikon, monkeypatch, config, valid_exif_red):
 
     # Monkey-patch extract_exif_data to return a fixed EXIF dictionary.
     monkeypatch.setattr("main.extract_exif_data", lambda file_path, et: valid_exif_red)
+    monkeypatch.setattr(config, 'original_photo_dirs', [Path('tests/')])
 
-    psf = process_file(dummy_file, config, exif_tool_helper=None)
+    psf = process_file(image_path_nikon, config, exif_tool_helper=None)
     # Verify that a PhotoSourceFile entry was created.
 
     assert psf is not None
     assert psf.rating == 1
     assert psf.label_color == "red"
+    assert psf.keywords == ['test_assets']
+    assert isinstance(psf.timestamp, datetime)
+    assert psf.timestamp == datetime.strptime(valid_exif_red["Composite:SubSecCreateDate"], "%Y:%m:%d %H:%M:%S")
     # # Verify that an associated Photo was created.
     # photo = session.get(Photo, psf.timestamp)
     # assert photo is not None

@@ -3,7 +3,8 @@ import re
 
 # from app.search import add_to_index, remove_from_index, query_index
 from sqlalchemy import types, Column, Integer, String, ForeignKey, Boolean, JSON, DateTime, NUMERIC
-from sqlalchemy.orm import relationship
+from sqlalchemy.ext.mutable import MutableList
+from sqlalchemy.orm import relationship, Mapped, mapped_column
 import numpy as np
 import io
 
@@ -47,15 +48,25 @@ class PhotoSourceFile(Base):
     exif_metadata = Column(JSON)
     label_color = Column(String)
     rating = Column(Integer)
-    timestamp = Column(String, ForeignKey('photo.timestamp_id'))
+    keywords: Mapped[list[str]] = mapped_column(
+        MutableList.as_mutable(JSON),   # track in-place .append/.remove changes
+        default=list,                   # avoid default=[]
+        nullable=False
+    )
+    timestamp = Column(DateTime, ForeignKey('photo.timestamp_id'))
     photo = relationship('Photo', back_populates='source_files', foreign_keys=[timestamp])
     last_updated = Column(DateTime) #TODO: should I rename since this is the last time the file was updated?
 
 class Photo(Base):
-    timestamp_id = Column(String, primary_key=True)
+    timestamp_id = Column(DateTime, primary_key=True)
     exif_metadata = Column(JSON)
     label_color = Column(String)
     rating = Column(Integer)
+    keywords: Mapped[list[str]] = mapped_column(
+        MutableList.as_mutable(JSON),   # track in-place .append/.remove changes
+        default=list,                   # avoid default=[]
+        nullable=False
+    )
     photo_faces = relationship('PhotoFace')
     search_results = relationship('SearchResults', back_populates='photo')
     face_detection_run = Column(Boolean, nullable=False, default=False)
