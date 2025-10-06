@@ -1,4 +1,5 @@
 import logging
+import os
 from datetime import datetime
 from pathlib import Path
 
@@ -7,7 +8,7 @@ from pytest import MonkeyPatch
 
 from exiftool import ExifToolHelper
 
-
+from constants import PHOTO_FILE_DIRECTORY_NAME
 # Import functions and models from your main module.
 # Adjust the import statement if your module name differs.
 from main import (
@@ -418,5 +419,54 @@ def test_copy_photo_files_to_destination_directory(tmp_path, session, config, mo
     copy_photo_files_to_destination_directory(session,config)
 
     assert target.exists()
-    paths = [(root,dirs,files) for root,dirs,files in target.walk()]
-    assert paths[2][2][0] == '_DSC2510.jpg'
+    paths = [file for file in target.rglob('*') if file.is_file()]
+    assert paths[0].name == '_DSC2510.jpg'
+
+
+def test_copy_photo_files_to_destination_directory_leaves_newer_file(tmp_path, session, config, monkeypatch, add_photos):
+    target = Path(tmp_path / "destination_photos")
+    monkeypatch.setattr(config,'destination_dir', target)
+    test_file = Path('/tmp/pytest-of-zack/pytest-current/test_copy_photo_files_to_desticurrent/destination_photos/tests/test_assets/_DSC2510.jpg')
+    test_file.parent.mkdir(parents=True, exist_ok=True)
+    test_file.touch()
+    mtime = test_file.lstat().st_mtime
+    copy_photo_files_to_destination_directory(session,config)
+    assert target.exists()
+    paths = [file for file in target.rglob('*') if file.is_file()]
+    assert paths[0].name == '_DSC2510.jpg'
+    assert paths[0].lstat().st_ctime == mtime
+
+
+def test_copy_photo_files_to_destination_directory_replaces_older_file(tmp_path, session, config, monkeypatch, add_photos):
+    target = Path(tmp_path / "destination_photos")
+    monkeypatch.setattr(config,'destination_dir', target)
+    test_file = Path(f'/tmp/pytest-of-zack/pytest-current/test_copy_photo_files_to_desticurrent/destination_photos/{PHOTO_FILE_DIRECTORY_NAME}/tests/test_assets/_DSC2510.jpg')
+    test_file.parent.mkdir(parents=True, exist_ok=True)
+    test_file.touch()
+    os.utime(test_file, (1000000000, 1000000000))  # Set access and modified times to a past timestamp
+    mtime = test_file.lstat().st_mtime
+    copy_photo_files_to_destination_directory(session,config)
+    assert target.exists()
+    paths = [file for file in target.rglob('*') if file.is_file()]
+    assert paths[0].name == '_DSC2510.jpg'
+    assert paths[0].lstat().st_mtime > mtime
+
+def test_copy_photo_files_to_destination_directory_removes_left_over_files(tmp_path, session, config, monkeypatch, add_photos):
+    target = Path(tmp_path / "destination_photos")
+    monkeypatch.setattr(config,'destination_dir', target)
+    test_files =[Path(f'/tmp/pytest-of-zack/pytest-current/test_copy_photo_files_to_desticurrent/destination_photos/{PHOTO_FILE_DIRECTORY_NAME}/tests/test_assets/same_dir.jpg'),
+                 Path(f'/tmp/pytest-of-zack/pytest-current/test_copy_photo_files_to_desticurrent/destination_photos/{PHOTO_FILE_DIRECTORY_NAME}/another_dir/different_dir.jpg')]
+    for test_file in test_files:
+        test_file.parent.mkdir(parents=True, exist_ok=True)
+        test_file.touch()
+
+    copy_photo_files_to_destination_directory(session,config)
+
+    for test_file in test_files:
+        assert not test_file.exists()
+
+    assert target.exists()
+    paths = [file for file in target.rglob('*') if file.is_file()]
+    assert paths[0].name == '_DSC2510.jpg'
+
+

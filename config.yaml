@@ -27,7 +27,7 @@ source_file_preference:
   - Google Photos
 destination_dir: "/media/zack/ST-4000MAG4/tv_slideshows"
 default_filter:
-  labels: "Red"
+  labels: ["Red"]
 slideshows:
   - name: "Last Year"
     description: "photos from the last year"

@@ -9,9 +9,8 @@ from sqlalchemy.orm import Query
 from sqlalchemy.engine import Connection
 from sqlalchemy.sql import Select
 
-
 from models import Photo
-
+from config import PhotoFilterConfig
 
 
 def _date_part_expr(timestamp_col, date_parts: Dict[str, Any]):
@@ -42,7 +41,7 @@ def _keywords_or_clause(keywords: Iterable[str]):
 
 
 def build_photo_filter_clauses(
-    f: Dict[str, Any],
+    filter: PhotoFilterConfig,
 ) -> List[BinaryExpression]:
     """
     Translate a filter dict (from your YAML) into a list of SQLAlchemy clauses
@@ -67,13 +66,13 @@ def build_photo_filter_clauses(
     clauses: List[BinaryExpression] = []
 
     # Date range: string-compare on ISO strings OR datetime compare if set
-    if start := f.get("start_date"):
+    if start := filter.start_date:
         clauses.append(Photo.timestamp_id >= start)
-    if end := f.get("end_date"):
+    if end := filter.end_date:
         clauses.append(Photo.timestamp_id <= end)
 
     # date_part
-    if dp := f.get("date_part"):
+    if dp := filter.date_parts:
         clauses.extend(
             _date_part_expr(
                 Photo.timestamp_id,
@@ -82,28 +81,16 @@ def build_photo_filter_clauses(
         )
 
     # keywords (OR)
-    if "keywords" in f and f["keywords"] not in (None, ""):
-        #todo: make sure keyword is a list in Pydantic model and remove this check
-        kw_val = f["keywords"]
-        if isinstance(kw_val, str):
-            kw_list = [kw_val]
-        else:
-            kw_list = list(kw_val)
-        kw_clause = _keywords_or_clause(kw_list)
-        if kw_clause is not None:
-            clauses.append(kw_clause)
+    if filter.keywords:
+        kw_clause = _keywords_or_clause(filter.keywords)
+        clauses.append(kw_clause)
 
     # labels (OR)
-    if "labels" in f and f["labels"] not in (None, ""):
-        labels_val = f["labels"]
-        if isinstance(labels_val, str):
-            labels_list = [labels_val]
-        else:
-            labels_list = list(labels_val)
-        clauses.append(Photo.label_color.in_(labels_list))
+    if filter.labels:
+        clauses.append(Photo.label_color.in_(filter.labels))
 
     # rating (>=)
-    if rating := f.get("rating"):
+    if rating := filter.rating:
         clauses.append(Photo.rating >= int(rating))
 
     return clauses
@@ -111,7 +98,7 @@ def build_photo_filter_clauses(
 #Todo: make filter pydantic model and validate datetimes and other structures
 def apply_photo_filter(
     query_or_select: Query | Select,
-    filter_dict: Dict[str, Any],
+    filter: PhotoFilterConfig,
     *,
     dialect_name: str | None = None,
 ):
@@ -128,7 +115,7 @@ def apply_photo_filter(
         rows = q.all()
     """
     clauses = build_photo_filter_clauses(
-        filter_dict,
+        filter,
     )
     if not clauses:
         return query_or_select

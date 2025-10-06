@@ -1,0 +1,1 @@
+PHOTO_FILE_DIRECTORY_NAME = "photos"

@@ -21,48 +21,20 @@ from sqlalchemy.pool import NullPool
 from sqlalchemy.orm import relationship, sessionmaker, Session, joinedload
 from sqlalchemy.ext.declarative import declarative_base, declared_attr
 
+from constants import PHOTO_FILE_DIRECTORY_NAME
 from models import Base, Photo, PhotoSourceFile
-from ruamel.yaml import YAML
-yaml = YAML(typ="safe")
-from dataclasses import asdict
-from pydantic.dataclasses import dataclass
+
 from typing import List, Dict, Callable, Any, Optional, Iterable
 
-from pathlib import Path
 
+from config import Config, PossibleMetadataKeys
 from filters import apply_photo_filter
+
+
+
 
 # --- Logging Configuration ---
 logger = logging.getLogger(__name__)
-
-
-@dataclass
-class PossibleMetadataKeys:
-    timestamp: List[str]
-    label_color: List[str]
-    rating: List[str]
-
-@dataclass
-class Config:
-    original_photo_dirs: List[Path]
-    file_types: List[str]
-    possible_metadata_keys: PossibleMetadataKeys
-    source_file_preference: List[str]
-    destination_dir: Path
-    db_url: str = "sqlite:///photos.db"
-    batch_size: int = 100
-    default_filter: Dict = None
-    slideshows: List[Dict[str, Any]] = None
-
-
-
-    @staticmethod
-    def load_from_yaml(yaml_str: str) -> "Config":
-        with open(yaml_str, "r") as f:
-            data = yaml.load(f)
-        data['original_photo_dirs'] = [Path(p) for p in data['original_photo_dirs']]
-        return Config(**data)
-
 
 
 # --- Helper Functions ---
@@ -189,13 +161,13 @@ def normalize_exif_data(exif: Dict, possible_metadata_keys: PossibleMetadataKeys
     Uses the possible_metadata_keys provided in the config.
     """
     normalized_exif_data = {}
-    for normalized_key, possible_source_keys in asdict(possible_metadata_keys).items():
+    for normalized_key, possible_source_keys in possible_metadata_keys.model_dump().items():
         for key in possible_source_keys:
             if key in exif:
                 normalized_exif_data[normalized_key] = exif[key]
                 break
     
-    missing_keys = set(asdict(possible_metadata_keys).keys()) - set(normalized_exif_data.keys())
+    missing_keys = set(possible_metadata_keys.model_dump().keys()) - set(normalized_exif_data.keys())
     for key in missing_keys:
         normalized_exif_data[key] = None
         logger.debug(f"Missing key {key} in normalized exif data")
@@ -650,28 +622,46 @@ def copy_photo_files_to_destination_directory(session, config: Config):
     Retrieves Photos based on default filter in config, then copies the reference source files to config's destination directory.
     Preserves directory structure relative to original_photo_dirs.
     """
-    #ensure destination directory exists
-    dest_dir = Path(config.destination_dir)
-    dest_dir.mkdir(parents=True, exist_ok=True)
+    #ensure destination directory exists, get existing files if so
+    dest_dir = config.destination_dir.joinpath(PHOTO_FILE_DIRECTORY_NAME)
+    existing_files = {p.resolve() for p in dest_dir.rglob('*') if p.is_file()}
+    logger.info(f"Destination directory {dest_dir} exists with {len(existing_files)} files.")
 
     #retrieve photos based on default filter
     q = session.query(Photo)
     q = apply_photo_filter(q, config.default_filter)
     photos = q.all()
+    #copy each photo's reference source file to destination directory if it's newer tan existing file
     for photo in photos:
         source_path = Path(photo.reference_source.absolute_path_id)
         dest_path = Path(config.destination_dir).joinpath(source_path)
         dest_path.parent.mkdir(parents=True, exist_ok=True)
-        if dest_path.exists() and dest_path.stat().st_ctime >= source_path.stat().st_mtime:
+        if dest_path.exists() and dest_path.stat().st_mtime >= source_path.stat().st_mtime:
             logger.info(f"Skipping existing file {dest_path}. Already has same or newer content.")
+            existing_files.discard(dest_path)
             continue
         try:
             shutil.copy2(source_path, dest_path)
+            logger.info(f"Copied {source_path} to {dest_path}")
         except Exception as e:
             warnings.warn(f"Error copying file {source_path} to {dest_path}: {e}")
             logger.warning(f"Error copying file {source_path} to {dest_path}: {e}")
-            continue
-        logger.info(f"Copied {source_path} to {dest_path}")
+        finally:
+            existing_files.discard(dest_path)
+    #remove any leftover files that weren't returned by the current default query
+    for leftover in existing_files:
+        try:
+            leftover.unlink()
+            logger.info(f"Removed leftover file {leftover}")
+        except Exception as e:
+            warnings.warn(f"Error removing leftover file {leftover}: {e}")
+            logger.warning(f"Error removing leftover file {leftover}: {e}")
+
+def create_slideshow_directory(session, slideshow: Dict, photos_dir: Path, slideshow_dir: Path):
+    """
+    Creates a directory for a slideshow based on its filter in config.
+    Creates a symlink in the slideshow directory to file in the photos directory.
+    """
 
 
 
