@@ -1,3 +1,4 @@
+import argparse
 import itertools
 import os
 import re
@@ -21,13 +22,13 @@ from sqlalchemy.pool import NullPool
 from sqlalchemy.orm import relationship, sessionmaker, Session, joinedload
 from sqlalchemy.ext.declarative import declarative_base, declared_attr
 
-from constants import PHOTO_FILE_DIRECTORY_NAME
+from constants import PHOTO_FILE_DIRECTORY_NAME, SLIDESHOW_DIRECTORY_NAME
 from models import Base, Photo, PhotoSourceFile
 
 from typing import List, Dict, Callable, Any, Optional, Iterable
 
 
-from config import Config, PossibleMetadataKeys
+from config import Config, PossibleMetadataKeys, PhotoFilterConfig, SlideShowConfig
 from filters import apply_photo_filter
 
 
@@ -541,31 +542,15 @@ def consumer_process(queue: Queue, processor: BatchProcessor, stop_signal: str =
     # Process any remaining items before shutting down
     processor.flush()
 
-def main():
-    # Load configuration
-    config = Config.load_from_yaml("config.yaml")
-
-    setup_root_stdout_root_logger()
-
-    db_url = config.db_url
-
-    # Create the engine and ensure tables exist.
-    engine = create_engine(f'{db_url}?journal_mode=WAL', echo=False)
-    Base.metadata.create_all(engine)
-    logger.info("Database tables created.")
-    print("If you see this and no logs, logging isn't being output")
-    Session = sessionmaker(bind=engine)
-    session = Session()
-    with engine.connect() as connection:
-        connection.exec_driver_sql("PRAGMA synchronous=NORMAL;")
-
+def update_database(config:Config, session: Session):
     # Discover leaf directories from each parent directory in the config.
     files = []
     logger.info("Discovering files")
     for parent in config.original_photo_dirs:
         photo_files = list_files_recursive(parent, config.file_types)
         if len(photo_files) == 0:
-            logger.warning(f"No files found in {parent}. Check that directory is mounted and config file_types are correct.")
+            logger.warning(
+                f"No files found in {parent}. Check that directory is mounted and config file_types are correct.")
         files.extend(photo_files)
     logger.info(f"Found {len(files)} files with correct type.")
 
@@ -615,9 +600,8 @@ def main():
     # ps.print_stats()
     # print(s.getvalue())
 
-    session.close()
 
-def copy_photo_files_to_destination_directory(session, config: Config):
+def copy_photo_files_to_destination_directory(session: Session, config: Config):
     """
     Retrieves Photos based on default filter in config, then copies the reference source files to config's destination directory.
     Preserves directory structure relative to original_photo_dirs.
@@ -634,7 +618,7 @@ def copy_photo_files_to_destination_directory(session, config: Config):
     #copy each photo's reference source file to destination directory if it's newer tan existing file
     for photo in photos:
         source_path = Path(photo.reference_source.absolute_path_id)
-        dest_path = Path(config.destination_dir).joinpath(source_path)
+        dest_path = dest_dir.joinpath(source_path.relative_to('/'))
         dest_path.parent.mkdir(parents=True, exist_ok=True)
         if dest_path.exists() and dest_path.stat().st_mtime >= source_path.stat().st_mtime:
             logger.info(f"Skipping existing file {dest_path}. Already has same or newer content.")
@@ -657,12 +641,73 @@ def copy_photo_files_to_destination_directory(session, config: Config):
             warnings.warn(f"Error removing leftover file {leftover}: {e}")
             logger.warning(f"Error removing leftover file {leftover}: {e}")
 
-def create_slideshow_directory(session, slideshow: Dict, photos_dir: Path, slideshow_dir: Path):
+def create_slideshow_directory(session: Session, slideshow_config: SlideShowConfig, config: Config):
     """
-    Creates a directory for a slideshow based on its filter in config.
+    Creates a directory for a slideshow based on its filter in config combined with default filter. Overwrites existing directory.
     Creates a symlink in the slideshow directory to file in the photos directory.
     """
+    slideshow_dir = config.destination_dir.joinpath(SLIDESHOW_DIRECTORY_NAME).joinpath(slideshow_config.name)
+    photos_dir = config.destination_dir.joinpath(PHOTO_FILE_DIRECTORY_NAME)
+    if slideshow_dir.exists():
+        shutil.rmtree(slideshow_dir)
+    slideshow_dir.mkdir(parents=True, exist_ok=True)
+    filter = config.default_filter.merge(slideshow_config.filter)
+    q = session.query(Photo)
+    q = apply_photo_filter(q, filter)
+    photos = q.all()
+    for photo in photos:
+        try:
+            source_path = photos_dir.joinpath(photo.reference_source.absolute_path_id.lstrip('/'))
+        except AttributeError:
+            warnings.warn(f"Photo {photo} has no reference source.")
+            logger.warning(f"Photo {photo} has no reference source.")
+            continue
+        try:
+            dest_path = slideshow_dir.joinpath(source_path.name)
+            os.symlink(source_path.resolve(), dest_path)
+            logger.info(f"Created symlink {dest_path} -> {source_path}")
+        except Exception as e:
+            warnings.warn(f"Error creating symlink {dest_path} -> {source_path}: {e}")
+            logger.warning(f"Error creating symlink {dest_path} -> {source_path}: {e}")
 
+
+def main():
+
+    parser = argparse.ArgumentParser(description='slideshow generator')
+
+    # Simple flag (default False, becomes True when present)
+    parser.add_argument('--update-db', action='store_true',
+                        help='Update the database before generating slideshows')
+
+    args = parser.parse_args()
+
+    # Load configuration
+    config = Config.load_from_yaml("config.yaml")
+
+    setup_root_stdout_root_logger()
+
+    db_url = config.db_url
+
+    # Create the engine and ensure tables exist.
+    engine = create_engine(f'{db_url}?journal_mode=WAL', echo=False)
+    Base.metadata.create_all(engine)
+    logger.info("Database tables created.")
+    print("If you see this and no logs, logging isn't being output")
+    Session = sessionmaker(bind=engine)
+    session = Session()
+    with engine.connect() as connection:
+        connection.exec_driver_sql("PRAGMA synchronous=NORMAL;")
+
+    if args.update_db:
+        update_database(config, session)
+
+    copy_photo_files_to_destination_directory(session, config)
+    if config.slideshows:
+        for slideshow in config.slideshows:
+            create_slideshow_directory(session, slideshow, config)
+
+
+    session.close()
 
 
 

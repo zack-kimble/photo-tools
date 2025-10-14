@@ -1,4 +1,5 @@
 import os
+from pathlib import Path
 
 import pytest
 from sqlalchemy import create_engine
@@ -10,7 +11,7 @@ from datetime import datetime
 
 @pytest.fixture
 def config():
-    return Config.load_from_yaml("config.yaml")
+    return Config.load_from_yaml("tests/test_assets/test_config.yaml")
 
 @pytest.fixture
 def db_url():
@@ -30,11 +31,19 @@ def session(engine):
     yield session
     session.close()
 
+@pytest.fixture
+def test_photo_abs_path():
+    return Path('tests/test_assets/_DSC2510.jpg').resolve()
+
+@pytest.fixture
+def test_photo_abs_path_made_relative(test_photo_abs_path):
+    return test_photo_abs_path.relative_to('/')
 
 
 
 
-def make_test_photos():
+
+def make_test_photos(test_photo_abs_path):
     """
     Returns a list[Photo] with varied timestamps, keywords, and ratings.
     Coverage:
@@ -58,7 +67,7 @@ def make_test_photos():
         )
 
     psf = PhotoSourceFile(
-        absolute_path_id="tests/test_assets/_DSC2510.jpg", timestamp=datetime(2024, 5, 10, 14, 30, 0))
+        absolute_path_id=str(test_photo_abs_path), timestamp=datetime(2024, 5, 10, 14, 30, 0))
 
     # ---- Within "Last Year" range: 2024-05-01 .. 2025-07-10 ----
     p1 =P(datetime(2024, 5, 10, 14, 30, 0),  # P02
@@ -144,8 +153,8 @@ def make_test_photos():
 
 
 @pytest.fixture
-def add_photos(session):
-    psf, photos = make_test_photos()
+def add_photos(session, test_photo_abs_path):
+    psf, photos = make_test_photos(test_photo_abs_path)
     session.add_all(psf+photos)
     session.commit()
     yield

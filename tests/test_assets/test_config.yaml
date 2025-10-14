@@ -32,23 +32,18 @@ slideshows:
   - name: "Last Year"
     description: "photos from the last year"
     filter:
-      start_date: "2024-10-10"
-      end_date: "2025-10-11"
+      start_date: "2024-05-01"
+      end_date: "2025-04-30"
 
   - name: "Asia 2014"
     description: "photos from my Asia trip in 2014"
     filter:
       keywords: ["Asia 2014"]
 
-  - name: "Post Ansel"
-    description: "photos since Ansel was born"
+  - name: "Mountains"
+    description: "mountain photos"
     filter:
-      start_date: "2022-05-05"
-
-  - name: "Switzerland"
-    description: "photos from Switzerland trip"
-    filter:
-       keywords: ["Switzerland"]
+      keywords: ["mountain", "mountains"]
 
   - name: "Christmas"
     description: "Christmas photos"
@@ -61,8 +56,10 @@ slideshows:
     filter:
       rating: 5
 
-  - name: "Fall Photos"
-    description: "Fall photos"
+  - name: "Last year mountains"
+    description: "mountain photos from the last year"
     filter:
-      date_parts:
-        month: 11 # Need to accommodate lists of parts
+      start_date: "2024-05-01"
+      end_date: "2025-04-30"
+      keywords: ["mountain", "mountains"]
+

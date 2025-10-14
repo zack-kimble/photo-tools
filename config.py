@@ -26,11 +26,34 @@ class PhotoFilterConfig(BaseModel):
             raise ValueError('Rating must be between 1 and 5')
         return v
 
+    def merge(self, other: "PhotoFilterConfig") -> "PhotoFilterConfig":
+        """
+        Merge another PhotoFilterConfig into this one, with `other` taking precedence.
+        Lists are combined (union), scalars from `other` override if set.
+        """
+        merged = self.model_copy()
+
+        if other.start_date is not None:
+            merged.start_date = other.start_date
+        if other.end_date is not None:
+            merged.end_date = other.end_date
+        if other.date_parts is not None:
+            merged.date_parts = {**(self.date_parts or {}), **other.date_parts}
+        if other.keywords is not None:
+            merged.keywords = list(set((self.keywords or []) + other.keywords))
+        if other.labels is not None:
+            merged.labels = list(set((self.labels or []) + other.labels))
+        if other.rating is not None:
+            merged.rating = other.rating
+
+        return merged
+
 
 class SlideShowConfig(BaseModel):
     name: str
     description: str
     filter: PhotoFilterConfig  # Automatic nested validation!
+
 
 
 class Config(BaseModel):

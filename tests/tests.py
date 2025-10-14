@@ -24,7 +24,8 @@ from main import (
     PhotoSourceFile,
     update_photo,
     add_directory_to_IPTC_keywords,
-    copy_photo_files_to_destination_directory
+    copy_photo_files_to_destination_directory,
+    create_slideshow_directory
 )
 
 # --- Fixtures ---
@@ -414,33 +415,35 @@ def test_update_photo_order_independence(config, valid_exif_blue, valid_exif_red
 
 
 def test_copy_photo_files_to_destination_directory(tmp_path, session, config, monkeypatch, add_photos):
-    target = Path(tmp_path / "destination_photos")
-    monkeypatch.setattr(config,'destination_dir', target)
+    destination_dir = Path(tmp_path / "destination_photos")
+    monkeypatch.setattr(config, 'destination_dir', destination_dir)
+    target = destination_dir.joinpath(PHOTO_FILE_DIRECTORY_NAME)
     copy_photo_files_to_destination_directory(session,config)
+
 
     assert target.exists()
     paths = [file for file in target.rglob('*') if file.is_file()]
     assert paths[0].name == '_DSC2510.jpg'
 
 
-def test_copy_photo_files_to_destination_directory_leaves_newer_file(tmp_path, session, config, monkeypatch, add_photos):
+def test_copy_photo_files_to_destination_directory_leaves_newer_file(tmp_path, session, config, monkeypatch, add_photos, test_photo_abs_path_made_relative):
     target = Path(tmp_path / "destination_photos")
     monkeypatch.setattr(config,'destination_dir', target)
-    test_file = Path('/tmp/pytest-of-zack/pytest-current/test_copy_photo_files_to_desticurrent/destination_photos/tests/test_assets/_DSC2510.jpg')
+    test_file = Path(f'/tmp/pytest-of-zack/pytest-current/test_copy_photo_files_to_desticurrent/destination_photos/{PHOTO_FILE_DIRECTORY_NAME}/{test_photo_abs_path_made_relative}')
     test_file.parent.mkdir(parents=True, exist_ok=True)
     test_file.touch()
-    mtime = test_file.lstat().st_mtime
+    ctime = test_file.lstat().st_ctime
     copy_photo_files_to_destination_directory(session,config)
     assert target.exists()
     paths = [file for file in target.rglob('*') if file.is_file()]
     assert paths[0].name == '_DSC2510.jpg'
-    assert paths[0].lstat().st_ctime == mtime
+    assert paths[0].lstat().st_ctime == ctime
 
 
-def test_copy_photo_files_to_destination_directory_replaces_older_file(tmp_path, session, config, monkeypatch, add_photos):
+def test_copy_photo_files_to_destination_directory_replaces_older_file(tmp_path, session, config, monkeypatch, add_photos,test_photo_abs_path_made_relative):
     target = Path(tmp_path / "destination_photos")
     monkeypatch.setattr(config,'destination_dir', target)
-    test_file = Path(f'/tmp/pytest-of-zack/pytest-current/test_copy_photo_files_to_desticurrent/destination_photos/{PHOTO_FILE_DIRECTORY_NAME}/tests/test_assets/_DSC2510.jpg')
+    test_file = Path(f'/tmp/pytest-of-zack/pytest-current/test_copy_photo_files_to_desticurrent/destination_photos/{PHOTO_FILE_DIRECTORY_NAME}/{test_photo_abs_path_made_relative}')
     test_file.parent.mkdir(parents=True, exist_ok=True)
     test_file.touch()
     os.utime(test_file, (1000000000, 1000000000))  # Set access and modified times to a past timestamp
@@ -451,10 +454,11 @@ def test_copy_photo_files_to_destination_directory_replaces_older_file(tmp_path,
     assert paths[0].name == '_DSC2510.jpg'
     assert paths[0].lstat().st_mtime > mtime
 
-def test_copy_photo_files_to_destination_directory_removes_left_over_files(tmp_path, session, config, monkeypatch, add_photos):
+def test_copy_photo_files_to_destination_directory_removes_left_over_files(tmp_path, session, config, monkeypatch, add_photos, test_photo_abs_path_made_relative):
     target = Path(tmp_path / "destination_photos")
     monkeypatch.setattr(config,'destination_dir', target)
-    test_files =[Path(f'/tmp/pytest-of-zack/pytest-current/test_copy_photo_files_to_desticurrent/destination_photos/{PHOTO_FILE_DIRECTORY_NAME}/tests/test_assets/same_dir.jpg'),
+    test_photo_parent = test_photo_abs_path_made_relative.parent
+    test_files =[Path(f'/tmp/pytest-of-zack/pytest-current/test_copy_photo_files_to_desticurrent/destination_photos/{PHOTO_FILE_DIRECTORY_NAME}/{test_photo_parent}/same_dir.jpg'),
                  Path(f'/tmp/pytest-of-zack/pytest-current/test_copy_photo_files_to_desticurrent/destination_photos/{PHOTO_FILE_DIRECTORY_NAME}/another_dir/different_dir.jpg')]
     for test_file in test_files:
         test_file.parent.mkdir(parents=True, exist_ok=True)
@@ -469,4 +473,23 @@ def test_copy_photo_files_to_destination_directory_removes_left_over_files(tmp_p
     paths = [file for file in target.rglob('*') if file.is_file()]
     assert paths[0].name == '_DSC2510.jpg'
 
+def test_create_slideshow_directory(tmp_path,session, config, monkeypatch, add_photos, test_photo_abs_path_made_relative):
+    target = Path(tmp_path / "destination_photos")
+    monkeypatch.setattr(config,'destination_dir', target)
+    #imperfect isolation, but oh well
+    copy_photo_files_to_destination_directory(session,config)
+    expected_copied_photo_file = Path(
+    f'/tmp/pytest-of-zack/pytest-current/test_create_slideshow_directorcurrent/destination_photos/{PHOTO_FILE_DIRECTORY_NAME}/{test_photo_abs_path_made_relative}')
+    assert expected_copied_photo_file.exists()
+    create_slideshow_directory(session=session, slideshow_config=config.slideshows[0], config=config)
+    slideshows_dir = target.joinpath('slideshows')
+    assert slideshows_dir.exists()
+    slideshow_dir = slideshows_dir.joinpath(config.slideshows[0].name)
+    assert slideshow_dir.exists()
+    paths = [file for file in slideshow_dir.rglob('*') if file.is_file() or file.is_symlink()]
+    assert len(paths) == 1
+    symlink_file = paths[0]
+    assert symlink_file.name == '_DSC2510.jpg'
+    assert symlink_file.is_symlink() == True
+    assert symlink_file.resolve() == expected_copied_photo_file.resolve()
 
