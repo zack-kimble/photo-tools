@@ -29,6 +29,11 @@ destination_dir: "/media/zack/ST-4000MAG4/tv_slideshows"
 default_filter:
   labels: ["Red"]
 slideshows:
+  - name: "All Photos"
+    description: "all photos that pass default filter"
+    filter:
+      {} # Empty filter to include all photos that pass default filter
+      #end_date: "2100-01-01" # Hack to include all photos because filter can
   - name: "Last Year"
     description: "photos from the last year"
     filter:

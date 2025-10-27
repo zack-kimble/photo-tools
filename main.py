@@ -664,7 +664,7 @@ def create_slideshow_directory(session: Session, slideshow_config: SlideShowConf
             continue
         try:
             dest_path = slideshow_dir.joinpath(source_path.name)
-            os.symlink(source_path.resolve(), dest_path)
+            os.symlink(os.path.relpath(source_path,start=dest_path.parent), dest_path)
             logger.info(f"Created symlink {dest_path} -> {source_path}")
         except Exception as e:
             warnings.warn(f"Error creating symlink {dest_path} -> {source_path}: {e}")
